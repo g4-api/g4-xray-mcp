@@ -1,0 +1,6 @@
+@Mcp.Xray_HostAddress = http://localhost:5206
+
+GET {{Mcp.Xray_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
