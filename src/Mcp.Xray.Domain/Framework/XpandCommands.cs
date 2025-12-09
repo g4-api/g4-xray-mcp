@@ -1,5 +1,4 @@
 ﻿using Mcp.Xray.Domain.Models;
-using Mcp.Xray.Settings;
 
 using System;
 using System.Collections.Generic;
@@ -15,15 +14,16 @@ namespace Mcp.Xray.Domain.Framework
     /// </summary>
     internal static class XpandCommands
     {
+        #region *** Methods ***
         /// <summary>
         /// Creates an <see cref="HttpCommand"/> that associates a defect with a specific Xray test execution.
         /// The method prepares the request body using the issue identifier and key, then sends the request
         /// to the internal Xray API endpoint for attaching defects to a test run.
         /// </summary>
         /// <param name="idAndKey">A tuple containing both the numeric Jira issue identifier and the textual issue key.</param>
-        /// <param name="executionId">The identifier of the Xray test execution to which the defect will be added.</param>
+        /// <param name="testRunId">The identifier of the Xray test execution to which the defect will be added.</param>
         /// <returns>A configured <see cref="HttpCommand"/> that performs the defect attachment operation.</returns>
-        public static HttpCommand AddDefectToExecution((string Id, string Key) idAndKey, string executionId)
+        public static HttpCommand AddDefectToTestRun((string Id, string Key) idAndKey, string testRunId)
         {
             // Builds the payload using the provided tuple fields. 
             // Xray requires both the issue ID and the issue key.
@@ -40,7 +40,7 @@ namespace Mcp.Xray.Domain.Framework
                 Data = data,
                 Headers = NewHeaders(issueKey: idAndKey.Key),
                 Method = HttpMethod.Post,
-                Route = $"/api/internal/testrun/{executionId}/defects"
+                Route = $"/api/internal/testrun/{testRunId}/defects"
             };
         }
 
@@ -486,5 +486,6 @@ namespace Mcp.Xray.Domain.Framework
             // Xray uses the X-acpt header to associate the request with the given issue key.
             ["X-acpt"] = issueKey
         };
+        #endregion
     }
 }

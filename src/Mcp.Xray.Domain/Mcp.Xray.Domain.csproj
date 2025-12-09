@@ -11,7 +11,7 @@
 		<IsPackable>false</IsPackable>
 
 		<!-- https://learn.microsoft.com/en-us/dotnet/fundamentals/syslib-diagnostics/syslib1040-1049 -->
-		<NoWarn>$(NoWarn);SYSLIB1045;IDE0130;CA1873</NoWarn>
+		<NoWarn>$(NoWarn);SYSLIB1045;IDE0130;CA1873;IDE0079</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>

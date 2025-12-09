@@ -16,9 +16,12 @@ namespace Mcp.Xray.Domain.Framework
     /// </summary>
     internal static class JiraCommands
     {
+        #region *** Fields  ***
         // The base route for all Jira API calls, constructed using the configured API version.
         private static readonly string _baseRoute = $"/rest/api/{AppSettings.JiraOptions.ApiVersion}";
+        #endregion
 
+        #region *** Methods ***
         /// <summary>
         /// Creates an <see cref="HttpCommand"/> that adds a comment to a Jira issue.  
         /// The method prepares the JSON structure expected by Jira's update endpoint 
@@ -420,5 +423,6 @@ namespace Mcp.Xray.Domain.Framework
             Method = HttpMethod.Put,
             Route = $"{_baseRoute}/issue/{idOrKey}"
         };
+        #endregion
     }
 }

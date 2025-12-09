@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 
 using System;
 using System.IO;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -21,6 +22,17 @@ namespace Mcp.Xray.Settings
         /// Gets the application configuration.
         /// </summary>
         public static readonly IConfigurationRoot Configuration = NewConfiguraion();
+
+        /// <summary>
+        /// Provides a shared instance of <see cref="System.Net.Http.HttpClient"/> configured with a 30-minute timeout for HTTP
+        /// operations. This instance is intended for reuse to avoid socket exhaustion and improve performance.
+        /// The timeout for all requests sent using this client is set to 30 minutes. Modifying the timeout
+        /// or other properties may affect all consumers of this shared client.
+        /// </summary>
+        public static readonly HttpClient HttpClient = new()
+        {
+            Timeout = TimeSpan.FromMinutes(30)
+        };
 
         /// <summary>
         /// Gets the Jira options populated from configuration and environment variables.
@@ -80,10 +92,21 @@ namespace Mcp.Xray.Settings
                 // Ensure nested XrayCloudOptions is not null.
                 jiraOptions.XrayCloudOptions ??= new JiraOptionsModel.XrayCloudOptionsModel();
 
+                // Set default for ApiVersion if not set.
+                jiraOptions.ApiVersion = string.IsNullOrWhiteSpace(jiraOptions.ApiVersion)
+                    ? "latest"
+                    : jiraOptions.ApiVersion;
+
+                // Set default for BucketSize if not set or invalid.
+                jiraOptions.BucketSize = jiraOptions.BucketSize <= 0
+                    ? 4
+                    : jiraOptions.BucketSize;
+
                 // Each setting attempts to read its environment override in a single expression.
                 jiraOptions.ApiKey = GetOrDefault("JIRA_API_KEY", jiraOptions.ApiKey);
                 jiraOptions.ApiVersion = GetOrDefault("JIRA_API_VERSION", jiraOptions.ApiVersion);
                 jiraOptions.BaseUrl = GetOrDefault("JIRA_BASE_URL", jiraOptions.BaseUrl);
+                jiraOptions.BucketSize = GetOrDefault("JIRA_BUCKET_SIZE", jiraOptions.BucketSize);
                 jiraOptions.Username = GetOrDefault("JIRA_USERNAME", jiraOptions.Username);
 
                 // Xray Cloud specific settings.

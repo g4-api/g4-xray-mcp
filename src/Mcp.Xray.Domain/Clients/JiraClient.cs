@@ -1,6 +1,7 @@
 ﻿using Mcp.Xray.Domain.Extensions;
 using Mcp.Xray.Domain.Framework;
 using Mcp.Xray.Domain.Models;
+using Mcp.Xray.Settings;
 
 using Microsoft.Extensions.Logging;
 
@@ -22,6 +23,9 @@ namespace Mcp.Xray.Domain.Clients
     public class JiraClient
     {
         #region *** Fields         ***
+        // Bucket size used for batched operations, read from application settings.
+        private static readonly int _bucketSize = AppSettings.JiraOptions.BucketSize;
+
         // Default comment used when creating issues, including a timestamp for traceability.
         private static readonly string _createMessage =
             $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} UTC: Automatically created by G4 MCP Service.";
@@ -119,10 +123,7 @@ namespace Mcp.Xray.Domain.Clients
 
             // Perform the actual upload using the underlying Jira REST command invoker.
             // The API returns a JSON array describing the uploaded attachment(s).
-            var response = Invoker
-                .AddAttachments(idOrKey, attachments)
-                .ConvertToJsonDocument()
-                .RootElement;
+            var response = Invoker.AddAttachments(idOrKey, attachments);
 
             // Log the result for diagnostic or auditing purposes.
             _logger?.LogInformation(
@@ -320,18 +321,13 @@ namespace Mcp.Xray.Domain.Clients
         /// <returns>An enumerable sequence of issue JSON elements.</returns>
         public IEnumerable<JsonElement> GetIssues(params string[] idsOrKeys)
         {
-            // Read the optimal batch size from capabilities; defaults to 4.
-            var bucketSize = Authentication
-                .Properties
-                .GetCapability(capability: ContextEntries.BucketSize, defaultValue: 4);
-
             // Log the set of issue identifiers being requested.
             _logger?.LogDebug(
                 message: "Fetching issues for IDs/Keys {IdsOrKeys}: ",
                 string.Join(", ", idsOrKeys));
 
             // Perform the lookup using batched requests.
-            return FindByIdsOrKeys(Invoker, bucketSize, [.. idsOrKeys]);
+            return FindByIdsOrKeys(Invoker, _bucketSize, [.. idsOrKeys]);
         }
 
         /// <summary>
@@ -676,11 +672,6 @@ namespace Mcp.Xray.Domain.Clients
         /// <param name="idOrKey">The issue identifier or key.</param>
         public void RemoveAttachments(string idOrKey)
         {
-            // Read the maximum parallelism for delete operations; defaults to 10.
-            var bucketSize = Authentication.Properties.GetCapability(
-                capability: ContextEntries.BucketSize,
-                defaultValue: 0);
-
             // Fetch the issue with only the attachment field populated.
             var issue = JiraCommands
                 .GetIssue(idOrKey, fields: "attachment")
@@ -704,7 +695,7 @@ namespace Mcp.Xray.Domain.Clients
             // Configure parallel execution with the resolved bucket size.
             var options = new ParallelOptions
             {
-                MaxDegreeOfParallelism = bucketSize
+                MaxDegreeOfParallelism = _bucketSize
             };
 
             // Execute all remove commands in parallel.

@@ -1,5 +1,6 @@
 ﻿using Mcp.Xray.Domain.Framework;
 using Mcp.Xray.Domain.Models;
+using Mcp.Xray.Settings;
 
 using Newtonsoft.Json.Linq;
 
@@ -20,8 +21,9 @@ namespace Mcp.Xray.Domain.Extensions
 {
     internal static class LocalExtensions
     {
-        private static string s_interactiveJwt;
-        private static readonly HttpClient s_httpClient = new();
+        private static string _interactiveJwt;
+        private static readonly JsonSerializerOptions _jsonOptions = AppSettings.JsonOptions;
+        private static readonly HttpClient _httpClient = AppSettings.HttpClient;
 
         extension(Assembly assembly)
         {
@@ -35,41 +37,41 @@ namespace Mcp.Xray.Domain.Extensions
                 var fileReference = Array
                     .Find(assembly
                     .GetManifestResourceNames(), i => i.EndsWith(Path.GetFileName(name), StringComparison.OrdinalIgnoreCase));
-                
+
                 if (string.IsNullOrEmpty(fileReference))
                 {
                     return string.Empty;
                 }
 
                 var stream = assembly.GetManifestResourceStream(fileReference);
-                
+
                 using StreamReader reader = new(stream);
-                
+
                 return reader.ReadToEnd();
             }
         }
 
         extension(JiraAuthenticationModel authenticationModel)
         {
-            public async Task<string> GetJwt(string issue)
+            public async Task<string> GetJwt(string issueKey)
             {
                 try
                 {
-                    var response = (await GetInteractiveIssueToken(authenticationModel, issue)).ConvertToJsonToken();
+                    var response = (await GetInteractiveIssueToken(authenticationModel, issueKey)).ConvertToJsonToken();
                     var options = response.SelectTokens("..options").FirstOrDefault()?.ToString();
                     var token = JToken.Parse(options).SelectToken("contextJwt")?.ToString();
 
                     if (string.IsNullOrEmpty(token))
                     {
-                        return s_interactiveJwt;
+                        return _interactiveJwt;
                     }
 
-                    s_interactiveJwt = token;
-                    return s_interactiveJwt;
+                    _interactiveJwt = token;
+                    return _interactiveJwt;
                 }
                 catch (Exception)
                 {
-                    return s_interactiveJwt;
+                    return _interactiveJwt;
                 }
             }
 
@@ -92,7 +94,7 @@ namespace Mcp.Xray.Domain.Extensions
                 };
                 request.Headers.Authorization = authorization;
 
-                var response = await s_httpClient.SendAsync(request);
+                var response = await _httpClient.SendAsync(request);
 
                 return response.IsSuccessStatusCode
                     ? await response.Content.ReadAsStringAsync()
@@ -212,7 +214,7 @@ namespace Mcp.Xray.Domain.Extensions
             }
         }
 
-        extension (JToken token)
+        extension(JToken token)
         {
             public JObject ConvertToJsonObject()
             {
@@ -232,7 +234,7 @@ namespace Mcp.Xray.Domain.Extensions
             }
         }
 
-        extension (HttpCommand command)
+        extension(HttpCommand command)
         {
             /// <summary>
             /// Sends an HTTP command to Jira using the provided executor and default authentication.
@@ -300,6 +302,32 @@ namespace Mcp.Xray.Domain.Extensions
                 {
                     collection.Add(item);
                 }
+            }
+        }
+
+        extension(HttpResponseMessage response)
+        {
+            /// <summary>
+            /// Creates a standardized JSON response representation from an HTTP status code.
+            /// The method extracts the status code, reason phrase, and response body, then wraps
+            /// them into a serializable object for consistent error reporting.
+            /// </summary>
+            /// <param name="response">The HTTP response from which status and body information is extracted.</param>
+            /// <returns>A JSON string containing the status code, reason phrase, raw body, and a fixed identifier used to indicate that the response originated from a status-only result.</returns>
+            public string NewGenericResponse()
+            {
+                // Builds a simple JSON-compatible object that represents the error details.
+                // -1 is a static identifier indicating a synthetic or fallback response.
+                var responseObject = new
+                {
+                    Code = response.StatusCode,
+                    Reason = response.ReasonPhrase,
+                    Body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult(),
+                    Id = "-1"
+                };
+
+                // Serializes the structured response using the configured JSON options.
+                return JsonSerializer.Serialize(responseObject, _jsonOptions);
             }
         }
     }

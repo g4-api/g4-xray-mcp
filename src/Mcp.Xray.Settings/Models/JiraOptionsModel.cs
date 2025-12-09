@@ -6,6 +6,7 @@
     /// </summary>
     public class JiraOptionsModel
     {
+        #region *** Properties   ***
         /// <summary>
         /// The API token used for authenticating requests to Jira. 
         /// This value typically corresponds to a user-scoped token generated in the Atlassian account settings.
@@ -36,7 +37,9 @@
         /// Gets or sets the configuration options for connecting to Xray Cloud.
         /// </summary>
         public XrayCloudOptionsModel XrayCloudOptions { get; set; }
+        #endregion
 
+        #region *** Nested Types ***
         /// <summary>
         /// Represents configuration options for connecting to the Xray Cloud internal API.
         /// </summary>
@@ -47,5 +50,6 @@
             /// </summary>
             public string BaseUrl { get; set; }
         }
+        #endregion
     }
 }
