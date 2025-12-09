@@ -2,22 +2,16 @@
 using Mcp.Xray.Domain.Models;
 using Mcp.Xray.Settings;
 
-using Microsoft.Extensions.Logging;
-
-//using Newtonsoft.Json;
-//using Newtonsoft.Json.Linq;
-//using Newtonsoft.Json.Serialization;
-
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -25,44 +19,37 @@ using System.Threading.Tasks;
 
 namespace Mcp.Xray.Domain.Framework
 {
-    public class JiraCommandInvoker
+    /// <summary>
+    /// Provides the internal execution layer for Jira and Xray HTTP commands. The invoker
+    /// builds request messages, applies authentication, resolves Xray routing when required,
+    /// and dispatches the command using the correct HTTP verb handler.
+    /// </summary>
+    /// <param name="authentication">The authentication model that defines the Jira credentials and project context.</param>
+    public class JiraCommandInvoker(JiraAuthenticationModel authentication)
     {
-        private const string _mediaType = "application/json";
-
-
-        // API version used for Jira REST API, read from application settings.
+        #region *** Fields       ***
+        // The Jira REST API version used for constructing default API routes.
         private static readonly string _apiVersion = AppSettings.JiraOptions.ApiVersion;
 
-        // Bucket size used for batched operations, read from application settings.
+        // The Jira authentication context that supplies credentials and project context
+        // for all outgoing HTTP requests.
+        private readonly JiraAuthenticationModel _authentication = authentication;
+
+        // The configured bucket size used for controlling batch and parallel execution behavior.
         private static readonly int _bucketSize = AppSettings.JiraOptions.BucketSize;
 
-        // Shared HttpClient instance from application settings.
-        private static readonly HttpClient _httpClient = AppSettings.HttpClient;
-
+        // The root Jira base URL used for constructing all REST API endpoints.
         private static readonly string _jiraBaseAddress = AppSettings.JiraOptions.BaseUrl;
 
+        // The JSON serializer options applied when serializing Jira and Xray HTTP payloads.
         private static readonly JsonSerializerOptions _jsonOptions = AppSettings.JsonOptions;
 
-        // Xray Cloud Xpand-It endpoint used for specific operations.
-        // Legacy endpoint: https://xray.cloud.xpand-it.com
+        // The legacy Xray Cloud Xpand-It endpoint used for JWT-secured operations.
+        // This value typically points to <c>https://xray.cloud.xpand-it.com</c>.
         private static readonly string _xpandBaseAddress = AppSettings.JiraOptions.XrayCloudOptions.BaseUrl;
-
-        private readonly JiraAuthenticationModel _authentication;
-        
-        private readonly ILogger _logger;
-
-        #region *** Constructors ***
-        public JiraCommandInvoker(JiraAuthenticationModel authentication)
-            : this(authentication, logger: default)
-        { }
-
-        public JiraCommandInvoker(JiraAuthenticationModel authentication, ILogger logger)
-        {
-            _authentication = authentication;
-            _logger = logger;
-        }
         #endregion
 
+        #region *** Methods      ***
         /// <summary>
         /// Uploads one or more attachments to a Jira issue. Each file is added to a multipart
         /// HTTP request and sent to the Jira attachments endpoint. The method returns the
@@ -110,7 +97,8 @@ namespace Mcp.Xray.Domain.Framework
             requestMessage.Content = multiPartContent;
 
             // Sends the request and returns the parsed JSON body.
-            return SendRequest(requestMessage)
+            return requestMessage
+                .Send()
                 .ConvertToJsonDocument()
                 .RootElement;
         }
@@ -161,54 +149,9 @@ namespace Mcp.Xray.Domain.Framework
             return results;
         }
 
-        // TODO: Handle 429 Too Many Requests responses with retry-after logic.
-        // Enriches the given HTTP request message with Xray-specific authentication and routing
-        // based on the provided command headers. When a valid X-acpt header value is present,
-        // the method obtains an Xray JWT token and updates the request accordingly.
-        private static HttpRequestMessage NewXpandRequest(
-            JiraAuthenticationModel authentication,
-            HttpRequestMessage requestMessage,
-            HttpCommand command)
-        {
-            // X-acpt header constant.
-            const string Xacpt = "X-acpt";
-
-            // Returns the original request when no headers are defined on the command.
-            if (command.Headers == default)
-            {
-                return requestMessage;
-            }
-            // Returns the original request when the X-acpt header is not present.
-            else if (!command.Headers.TryGetValue(Xacpt, out string value))
-            {
-                return requestMessage;
-            }
-            // Returns the original request when the X-acpt header is empty.
-            else if (string.IsNullOrEmpty(value))
-            {
-                return requestMessage;
-            }
-
-            // Resolves the Xray JWT token using the header value as the issue key context.
-            var token = authentication.GetJwt(issueKey: command.Headers[Xacpt]).Result;
-
-            // Adds the resolved token to the outgoing request headers.
-            requestMessage.Headers.Add(name: Xacpt, value: token);
-
-            // Points the request URI to the Xray base address combined with the command route.
-            requestMessage.RequestUri = new Uri($"{_xpandBaseAddress}{command.Route}");
-
-            // returns the enriched request message.
-            return requestMessage;
-        }
-
         // Sends the specified HTTP command using the internal <see cref="JiraCommandInvoker"/> instance.
         // The method resolves the appropriate handler based on the HTTP method description attribute
         // and invokes it. When no matching handler is found, a synthetic 404 response is returned.
-        [SuppressMessage(
-            category: "Major Code Smell",
-            checkId: "S3011",
-            Justification = "Needed for accessing private members to generate metadata")]
         private static string SendCommand(JiraCommandInvoker instance, HttpCommand command)
         {
             // Compares method descriptions using a case-insensitive comparison.
@@ -216,9 +159,8 @@ namespace Mcp.Xray.Domain.Framework
 
             // Retrieves all non-public instance methods that are decorated with DescriptionAttribute.
             // These methods represent the available HTTP handlers (for example GET, POST, PUT, DELETE).
-            var methods = instance
-                .GetType()
-                .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+            var methods = typeof(MethodFactory)
+                .GetMethods(BindingFlags.Public | BindingFlags.Static)
                 .Where(i => i.GetCustomAttribute<DescriptionAttribute>() != null);
 
             // Selects the first method whose DescriptionAttribute value matches the command HTTP method.
@@ -244,169 +186,176 @@ namespace Mcp.Xray.Domain.Framework
                 Content = new StringContent(string.Empty)
             };
 
+            // Converts the response message to a generic response format.
             return response.NewGenericResponse();
-        }
-
-        // Sends the provided HTTP request using the shared HTTP client and returns the raw response body.
-        // When the response indicates a failure or contains an empty body, a formatted custom response
-        // string is returned instead.
-        private static string SendRequest(HttpRequestMessage request)
-        {
-            // Sends the HTTP request synchronously and waits for the response.
-            var response = _httpClient
-                .SendAsync(request)
-                .GetAwaiter()
-                .GetResult();
-
-            // When the status code represents a failure, a custom error response is returned.
-            if (!response.IsSuccessStatusCode)
-            {
-                return response.NewGenericResponse();
-            }
-
-            // Reads the response body as a string.
-            var responseBody = response
-                .Content
-                .ReadAsStringAsync()
-                .GetAwaiter()
-                .GetResult();
-
-            // Returns the raw body when available, otherwise falls back to a custom response wrapper.
-            return string.IsNullOrEmpty(responseBody)
-                ? response.NewGenericResponse()
-                : responseBody;
-        }
-
-        #region *** Requests Factory ***
-        // Sends an HTTP GET request using the Jira authentication model and the details
-        // provided in the HttpCommand instance. The method constructs the
-        // request URI using the Jira base address, applies authentication, optionally
-        // enriches the request for Xray-specific behavior, and returns the raw response body.
-        [Description("GET")]
-        private static string SendGetRequest(JiraAuthenticationModel authentication, HttpCommand command)
-        {
-            // Builds the full request URL by combining the Jira base address with the
-            // route defined in the command.
-            var endpoint = $"{_jiraBaseAddress}{command.Route}";
-
-            // Creates the outgoing GET request.
-            var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
-
-            // Applies the basic Authorization header derived from the authentication model.
-            request.Headers.Authorization = authentication.NewAuthenticationHeader();
-
-            // Applies Xray-specific routing and headers when the X-acpt header is defined.
-            request = NewXpandRequest(authentication, request, command);
-
-            // Sends the request and returns the resulting body or fallback error response.
-            return SendRequest(request);
-        }
-
-        [Description("POST")]
-        private string Post(HttpCommand command)
-        {
-
-            // setup
-            var request = GenericPostRequest(_authentication, command.Route, command.Data);
-
-            // factor
-            request = NewXpandRequest(request, command);
-
-            // post
-            return SendRequest(request);
-        }
-
-        [Description("PUT")]
-        private string Put(HttpCommand command)
-        {
-            // setup
-            var request = GenericPutRequest(_authentication, command.Route, command.Data);
-
-            // factor
-            request = NewXpandRequest(request, command);
-
-            // post
-            return SendRequest(request);
-        }
-
-        [Description("DELETE")]
-        private string Delete(HttpCommand command)
-        {
-            // setup
-            var request = GenericDeleteRequest(_authentication, command.Route);
-
-            // factor
-            request = NewXpandRequest(request, command);
-
-            // get
-            return SendRequest(request);
         }
         #endregion
 
-
-
-        // gets a generic post request.
-        private static HttpRequestMessage GenericPostRequest(JiraAuthenticationModel authentication, string route, object data)
+        #region *** Nested Types ***
+        /// <summary>
+        /// Provides factory-style HTTP method handlers used by the Jira command invocation layer.
+        /// Each handler corresponds to a specific HTTP verb and is resolved dynamically using
+        /// the <see cref="DescriptionAttribute"/> applied to the method.
+        /// </summary>
+        private static class MethodFactory
         {
-            //setup
-            var onPayload = JsonSerializer.Serialize(data, _jsonOptions);
-            if (data is JsonElement || data is string)
+            // Sends an HTTP DELETE request using the Jira authentication model together with
+            // the route and metadata defined in the <see cref="HttpCommand"/> instance.
+            // The method constructs the request, applies authentication, enriches it with
+            // Xray-specific routing when required, and returns the raw response body.
+            [Description("DELETE")]
+            public static string SendDeleteRequest(JiraAuthenticationModel authentication, HttpCommand command)
             {
-                onPayload = $"{data}";
+                // Builds the full DELETE endpoint URL.
+                var requestUri = $"{_jiraBaseAddress}{command.Route}";
+
+                // Creates the DELETE request message.
+                var request = new HttpRequestMessage(HttpMethod.Delete, requestUri);
+                request.Headers.Authorization = authentication.NewAuthenticationHeader();
+
+                // Applies Xray-specific headers and routing when the command
+                // includes an X-acpt value.
+                request = NewXpandRequest(authentication, request, command);
+
+                // Sends the request and returns the resulting raw response body.
+                return request.Send();
             }
 
-            // post
-            return GenericPostOrPutRequest(authentication, HttpMethod.Post, route, onPayload);
-        }
-
-        // gets a generic get request.
-        private static HttpRequestMessage GenericDeleteRequest(JiraAuthenticationModel authentication, string route)
-        {
-            // address
-            var baseAddress = authentication.Collection;
-            var onRoute = route;
-            var endpoint = baseAddress + onRoute;
-
-            // setup: request
-            var requestMessage = new HttpRequestMessage(HttpMethod.Delete, endpoint);
-            requestMessage.Headers.Authorization = authentication.NewAuthenticationHeader();
-
-            // results
-            return requestMessage;
-        }
-
-        // gets a generic put request.
-        private static HttpRequestMessage GenericPutRequest(JiraAuthenticationModel authentication, string route, object data)
-        {
-            var onPayload = JsonSerializer.Serialize(data, _jsonOptions);
-            
-            if (data is JsonElement || data is string)
+            // Sends an HTTP GET request using the Jira authentication model and the details
+            // provided in the HttpCommand instance. The method constructs the
+            // request URI using the Jira base address, applies authentication, optionally
+            // enriches the request for Xray-specific behavior, and returns the raw response body.
+            [Description("GET")]
+            public static string SendGetRequest(JiraAuthenticationModel authentication, HttpCommand command)
             {
-                onPayload = $"{data}";
+                // Builds the full request URL by combining the Jira base address with the
+                // route defined in the command.
+                var requestUri = $"{_jiraBaseAddress}{command.Route}";
+
+                // Creates the outgoing GET request.
+                var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+
+                // Applies the basic Authorization header derived from the authentication model.
+                request.Headers.Authorization = authentication.NewAuthenticationHeader();
+
+                // Applies Xray-specific routing and headers when the X-acpt header is defined.
+                request = NewXpandRequest(authentication, request, command);
+
+                // Sends the request and returns the resulting body or fallback error response.
+                return request.Send();
             }
 
-            return GenericPostOrPutRequest(authentication, HttpMethod.Put, route, onPayload);
+            // Sends an HTTP POST request using the Jira authentication model and the information
+            // provided in the HttpCommand instance. The method serializes the payload,
+            // builds the request message, applies authentication, enriches the request with Xray
+            // routing when necessary, and returns the raw response string.
+            [Description("POST")]
+            public static string SendPostRequest(JiraAuthenticationModel authentication, HttpCommand command)
+            {
+                // Serializes the Data object using the configured JSON options.
+                var content = JsonSerializer.Serialize(command.Data, _jsonOptions);
+
+                // When the Data object is already a JSON element or a raw string,
+                // serialize by direct string conversion instead.
+                if (command.Data is JsonElement || command.Data is string)
+                {
+                    content = $"{command.Data}";
+                }
+
+                // Builds the full URI for the outgoing request.
+                var requestUri = $"{_jiraBaseAddress}{command.Route}";
+
+                // Creates the outgoing POST request.
+                var request = new HttpRequestMessage(HttpMethod.Post, requestUri);
+                request.Headers.Authorization = authentication.NewAuthenticationHeader();
+
+                // Attaches the serialized body to the outgoing request.
+                request.Content = new StringContent(content, Encoding.UTF8, MediaTypeNames.Application.Json);
+
+                // Applies Xray routing and authentication when required
+                // (via the presence of an X-acpt header).
+                request = NewXpandRequest(authentication, request, command);
+
+                // Sends the request and returns the response body.
+                return request.Send();
+            }
+
+            // Sends an HTTP PUT request using the Jira authentication model together with the
+            // configuration supplied in the <see cref="HttpCommand"/> instance. The method serializes
+            // the payload, constructs the PUT request, applies authentication, optionally enriches
+            // the request for Xray routing, and returns the raw response body.
+            [Description("PUT")]
+            public static string SendPutRequest(JiraAuthenticationModel authentication, HttpCommand command)
+            {
+                // Serializes the Data object using the configured JSON serializer.
+                var content = JsonSerializer.Serialize(command.Data, _jsonOptions);
+
+                // If the Data payload is already a JSON element or a raw string,
+                // bypass normal serialization and use the direct representation instead.
+                if (command.Data is JsonElement || command.Data is string)
+                {
+                    content = $"{command.Data}";
+                }
+
+                // Builds the fully qualified request URI for the PUT operation.
+                var requestUri = $"{_jiraBaseAddress}{command.Route}";
+
+                // Creates the PUT request message that will be sent to Jira or Xray.
+                var request = new HttpRequestMessage(HttpMethod.Put, requestUri);
+                request.Headers.Authorization = authentication.NewAuthenticationHeader();
+
+                // Assigns the serialized payload to the request body.
+                request.Content = new StringContent(content, Encoding.UTF8, MediaTypeNames.Application.Json);
+
+                // Enriches the request with Xray routing and JWT authentication when the command
+                // includes the X-acpt header.
+                request = NewXpandRequest(authentication, request, command);
+
+                // Sends the request and returns the resulting string response.
+                return request.Send();
+            }
+
+            // TODO: Handle 429 Too Many Requests responses with retry-after logic.
+            // Enriches the given HTTP request message with Xray-specific authentication and routing
+            // based on the provided command headers. When a valid X-acpt header value is present,
+            // the method obtains an Xray JWT token and updates the request accordingly.
+            private static HttpRequestMessage NewXpandRequest(
+                JiraAuthenticationModel authentication,
+                HttpRequestMessage requestMessage,
+                HttpCommand command)
+            {
+                // X-acpt header constant.
+                const string Xacpt = "X-acpt";
+
+                // Returns the original request when no headers are defined on the command.
+                if (command.Headers == default)
+                {
+                    return requestMessage;
+                }
+                // Returns the original request when the X-acpt header is not present.
+                else if (!command.Headers.TryGetValue(Xacpt, out string value))
+                {
+                    return requestMessage;
+                }
+                // Returns the original request when the X-acpt header is empty.
+                else if (string.IsNullOrEmpty(value))
+                {
+                    return requestMessage;
+                }
+
+                // Resolves the Xray JWT token using the header value as the issue key context.
+                var token = authentication.GetJwt(issueKey: command.Headers[Xacpt]).Result;
+
+                // Adds the resolved token to the outgoing request headers.
+                requestMessage.Headers.Add(name: Xacpt, value: token);
+
+                // Points the request URI to the Xray base address combined with the command route.
+                requestMessage.RequestUri = new Uri($"{_xpandBaseAddress}{command.Route}");
+
+                // returns the enriched request message.
+                return requestMessage;
+            }
         }
-
-        private static HttpRequestMessage GenericPostOrPutRequest(
-            JiraAuthenticationModel authentication,
-            HttpMethod method,
-            string route,
-            string data)
-        {
-            // address
-            var baseAddress = authentication.Collection;
-            var endpoint = baseAddress + route;
-
-            // setup: request
-            var requestMessage = new HttpRequestMessage(method, endpoint);
-            requestMessage.Headers.Authorization = authentication.NewAuthenticationHeader();
-
-            // set content
-            requestMessage.Content = new StringContent(content: data, Encoding.UTF8, _mediaType);
-
-            // results
-            return requestMessage;
-        }
+        #endregion
     }
 }

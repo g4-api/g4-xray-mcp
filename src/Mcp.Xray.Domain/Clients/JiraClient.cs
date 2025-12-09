@@ -70,8 +70,8 @@ namespace Mcp.Xray.Domain.Clients
             // Store the authentication model.
             Authentication = authentication;
 
-            // Initialize the Jira command invoker with authentication and logging.
-            Invoker = new JiraCommandInvoker(authentication, logger);
+            // Initialize the Jira command invoker with authentication.
+            Invoker = new JiraCommandInvoker(authentication);
 
             // Load project metadata if a project key is present; otherwise fallback to an empty object.
             ProjectMeta = !string.IsNullOrEmpty(authentication.Project)
@@ -549,10 +549,11 @@ namespace Mcp.Xray.Domain.Clients
             var response = JiraCommands
                 .NewTransition(idOrKey, onTransition["id"], resolution, comment)
                 .Send(Invoker)
-                .ConvertToJsonToken();
+                .ConvertToJsonDocument()
+                .RootElement;
 
             // Jira uses "code": "204" to indicate a successful transition with no content.
-            return $"{response.SelectToken("code")}" == "204";
+            return $"{response.GetProperty("code")}" == "204";
         }
 
         /// <summary>

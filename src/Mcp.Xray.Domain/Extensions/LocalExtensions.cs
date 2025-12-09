@@ -2,8 +2,6 @@
 using Mcp.Xray.Domain.Models;
 using Mcp.Xray.Settings;
 
-using Newtonsoft.Json.Linq;
-
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -16,89 +14,319 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-#pragma warning disable S2325 // Unused private types or members should be removed
+#pragma warning disable S2325
 namespace Mcp.Xray.Domain.Extensions
 {
+    /// <summary>
+    /// Provides local extension for JSON operations and HTTP utilities
+    /// used internally across the application.
+    /// </summary>
     internal static class LocalExtensions
     {
-        private static string _interactiveJwt;
-        private static readonly JsonSerializerOptions _jsonOptions = AppSettings.JsonOptions;
+        // Shared HttpClient reference used for all HTTP operations.
+        // HttpClient is intentionally static to avoid socket exhaustion and to
+        // reuse underlying handlers. The configured instance from
+        // AppSettings.HttpClient ensures consistent headers,
+        // timeouts, TLS settings, and retry policies across the application.
         private static readonly HttpClient _httpClient = AppSettings.HttpClient;
+
+        // Cached JsonSerializerOptions instance used for all JSON
+        // serialization/deserialization operations in this extension class.
+        // The instance is pulled from AppSettings.JsonOptions so that
+        // the entire application has a unified JSON behavior (case sensitivity,
+        // converters, naming policy, etc.).
+        private static readonly JsonSerializerOptions _jsonOptions = AppSettings.JsonOptions;
 
         extension(Assembly assembly)
         {
+            /// <summary>
+            /// Reads an embedded resource from the provided assembly using the supplied name.
+            /// The lookup is performed by matching the file name portion against the assembly's
+            /// manifest resource list. Returns an empty string when the resource cannot be found.
+            /// </summary>
+            /// <param name="name">The resource name or file name to search for. Only the last path segment is used.</param>
+            /// <returns>The full text content of the embedded resource, or an empty string when the resource does not exist or the name is invalid.</returns>
             public string ReadEmbeddedResource(string name)
             {
+                // Returns an empty string when the resource name is missing.
                 if (string.IsNullOrEmpty(name))
                 {
                     return string.Empty;
                 }
 
+                // Searches the assembly resource names for a match by file name (case-insensitive).
                 var fileReference = Array
-                    .Find(assembly
-                    .GetManifestResourceNames(), i => i.EndsWith(Path.GetFileName(name), StringComparison.OrdinalIgnoreCase));
+                    .Find(
+                        assembly.GetManifestResourceNames(),
+                        i => i.EndsWith(Path.GetFileName(name), StringComparison.OrdinalIgnoreCase)
+                    );
 
+                // Returns an empty string when no resource name matches.
                 if (string.IsNullOrEmpty(fileReference))
                 {
                     return string.Empty;
                 }
 
+                // Retrieves the embedded resource stream.
                 var stream = assembly.GetManifestResourceStream(fileReference);
 
+                // Reads the resource content into a string.
                 using StreamReader reader = new(stream);
-
                 return reader.ReadToEnd();
+            }
+        }
+
+        extension<T>(ConcurrentBag<T> collection)
+        {
+            /// <summary>
+            /// Adds all items from the specified <paramref name="range"/> into the current
+            /// <see cref="ConcurrentBag{T}"/> instance. The method enumerates the incoming
+            /// sequence and inserts each item individually using <see cref="ConcurrentBag{T}.Add(T)"/>.
+            /// </summary>
+            /// <param name="range"> The sequence of items that should be added to the collection. When the sequence is null, the method performs no work.</param>
+            public void AddRange(IEnumerable<T> range)
+            {
+                // Exit early when no items are provided.
+                if (range is null)
+                {
+                    return;
+                }
+
+                // Adds each item to the concurrent bag.
+                foreach (T item in range)
+                {
+                    collection.Add(item);
+                }
+            }
+        }
+
+        extension(HttpCommand command)
+        {
+            /// <summary>
+            /// Sends an HTTP command to Jira using the provided executor and default authentication.
+            /// </summary>
+            /// <param name="command">The HTTP command to send.</param>
+            /// <param name="executor">The JiraCommandsExecutor to use. If not provided, a new one with default authentication will be created.</param>
+            /// <returns>The response from the Jira server.</returns>
+            public string Send(JiraCommandInvoker executor)
+            {
+                // Create a new executor with default authentication if not provided
+                executor ??= new JiraCommandInvoker(authentication: default);
+
+                // Send the command and return the response
+                return executor.SendCommand(command);
+            }
+
+            /// <summary>
+            /// Sends an HTTP command to Jira using the provided authentication and default executor.
+            /// </summary>
+            /// <param name="command">The HTTP command to send.</param>
+            /// <param name="authentication">The JiraAuthentication to use. If not provided, default authentication will be used.</param>
+            /// <returns>The response from the Jira server.</returns>
+            public string Send(JiraAuthenticationModel authentication)
+            {
+                // Create a new authentication if not provided
+                authentication ??= new JiraAuthenticationModel();
+
+                // Delegate to the Send method with the provided authentication and default executor
+                return Send(command, authentication, executor: default);
+            }
+
+            /// <summary>
+            /// Sends an HTTP command to Jira using the provided authentication and executor.
+            /// </summary>
+            /// <param name="command">The HTTP command to send.</param>
+            /// <param name="authentication">The JiraAuthentication to use. If not provided, default authentication will be used.</param>
+            /// <param name="executor">The JiraCommandsExecutor to use. If not provided, a new one with the specified authentication will be created.</param>
+            /// <returns>The response from the Jira server.</returns>
+            public string Send(JiraAuthenticationModel authentication, JiraCommandInvoker executor)
+            {
+                // Create a new executor if not provided
+                executor ??= new JiraCommandInvoker(authentication ?? new());
+
+                // Send the command and return the response
+                return executor.SendCommand(command);
+            }
+        }
+
+        extension(HttpResponseMessage response)
+        {
+            /// <summary>
+            /// Creates a standardized JSON response representation from an HTTP status code.
+            /// The method extracts the status code, reason phrase, and response body, then wraps
+            /// them into a serializable object for consistent error reporting.
+            /// </summary>
+            /// <param name="response">The HTTP response from which status and body information is extracted.</param>
+            /// <returns>A JSON string containing the status code, reason phrase, raw body, and a fixed identifier used to indicate that the response originated from a status-only result.</returns>
+            public string NewGenericResponse()
+            {
+                // Builds a simple JSON-compatible object that represents the error details.
+                // -1 is a static identifier indicating a synthetic or fallback response.
+                var responseObject = new
+                {
+                    Code = response.StatusCode,
+                    Reason = response.ReasonPhrase,
+                    Body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult(),
+                    Id = "-1"
+                };
+
+                // Serializes the structured response using the configured JSON options.
+                return JsonSerializer.Serialize(responseObject, _jsonOptions);
+            }
+        }
+
+        extension(HttpRequestMessage request)
+        {
+            /// <summary>
+            /// Sends the configured HTTP request using the shared HttpClient instance.
+            /// Returns the raw response body on success, or a generic JSON error object
+            /// when the request fails or the body is empty.
+            /// </summary>
+            /// <returns>The response body as a string, or a generic error response when the request fails.</returns>
+            public string Send()
+            {
+                // Sends the HTTP request synchronously and waits for the response.
+                var response = _httpClient
+                    .SendAsync(request)
+                    .GetAwaiter()
+                    .GetResult();
+
+                // When the status code represents a failure, a custom error response is returned.
+                if (!response.IsSuccessStatusCode)
+                {
+                    return response.NewGenericResponse();
+                }
+
+                // Reads the response body as a string.
+                var responseBody = response
+                    .Content
+                    .ReadAsStringAsync()
+                    .GetAwaiter()
+                    .GetResult();
+
+                // Returns the raw body when available, otherwise falls back to a custom response wrapper.
+                return string.IsNullOrEmpty(responseBody)
+                    ? response.NewGenericResponse()
+                    : responseBody;
+            }
+        }
+
+        extension<T>(IEnumerable<T> collection)
+        {
+            /// <summary>
+            /// Splits the source sequence into multiple subsequences (batches), each containing
+            /// up to <paramref name="itemsPerSet"/> elements. The method yields each batch
+            /// lazily as an <see cref="IEnumerable{T}"/>.
+            /// </summary>
+            /// <param name="itemsPerSet">The maximum number of items each returned batch may contain. Must be greater than zero; otherwise, the method yields no batches.</param>
+            /// <returns>A sequence of batches, where each batch is an <see cref="IEnumerable{T}"/> representing a segment of the original sequence.</returns>
+            public IEnumerable<IEnumerable<T>> Split(int itemsPerSet)
+            {
+                // Ensures a non-null sequence to iterate over.
+                collection = collection ?? [];
+
+                // An invalid batch size produces no output.
+                if (itemsPerSet <= 0)
+                {
+                    yield break;
+                }
+
+                // Materialize the input once to prevent re-enumeration.
+                var sourceList = collection.ToList();
+
+                // Iterate through the list in increments of the batch size.
+                for (int index = 0; index < sourceList.Count; index += itemsPerSet)
+                {
+                    // Yield a batch of items starting at the current index.
+                    yield return sourceList
+                        .Skip(index)
+                        .Take(itemsPerSet);
+                }
             }
         }
 
         extension(JiraAuthenticationModel authenticationModel)
         {
+            /// <summary>
+            /// Retrieves the Xray JWT token associated with the specified Jira issue key.
+            /// The method invokes the interactive issue token endpoint, parses the response,
+            /// and extracts the contextJwt value when available.
+            /// </summary>
+            /// <param name="issueKey">The Jira issue key that provides the context for the JWT generation.</param>
+            /// <returns>The JWT token string when it can be resolved successfully, or an empty string when the token is missing or an error occurs.</returns>
             public async Task<string> GetJwt(string issueKey)
             {
-                try
+                // Retrieves an interactive issue token from Jira by executing the
+                // <c>issueViewInteractiveQuery</c> operation using the embedded template file.
+                static async Task<string> GetInteractiveIssueToken(JiraAuthenticationModel authenticationModel, string issue)
                 {
-                    var response = (await GetInteractiveIssueToken(authenticationModel, issueKey)).ConvertToJsonToken();
-                    var options = response.SelectTokens("..options").FirstOrDefault()?.ToString();
-                    var token = JToken.Parse(options).SelectToken("contextJwt")?.ToString();
+                    // Read JSON request template from embedded resource.
+                    var template = Assembly
+                        .GetExecutingAssembly()
+                        .ReadEmbeddedResource("get_interactive_token.txt");
 
-                    if (string.IsNullOrEmpty(token))
+                    // Cannot continue without a valid template.
+                    if (string.IsNullOrEmpty(template))
                     {
-                        return _interactiveJwt;
+                        return "{}";
                     }
 
-                    _interactiveJwt = token;
-                    return _interactiveJwt;
+                    // Prepare request body by injecting project key and issue key.
+                    var data = template
+                        .Replace("[project-key]", authenticationModel.Project)
+                        .Replace("[issue-key]", issue);
+
+                    // Build Jira route.
+                    const string OperationRoute = "/rest/gira/1/?operation=issueViewInteractiveQuery";
+                    var url = $"{authenticationModel.Collection.TrimEnd('/')}{OperationRoute}";
+
+                    // Prepare the HTTP POST request.
+                    var request = new HttpRequestMessage(HttpMethod.Post, new Uri(url))
+                    {
+                        Content = new StringContent(data, Encoding.UTF8, "application/json")
+                    };
+
+                    // Attach authentication.
+                    request.Headers.Authorization = authenticationModel.NewAuthenticationHeader();
+
+                    // Send the request.
+                    var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+
+                    // Return body or "{}" on failure.
+                    return response.IsSuccessStatusCode
+                        ? await response.Content.ReadAsStringAsync().ConfigureAwait(false)
+                        : "{}";
+                }
+
+                // Attempts to parse the response and extract the JWT token.
+                try
+                {
+                    // Calls the interactive issue token API and parses the returned JSON into a JObject.
+                    var response = (await GetInteractiveIssueToken(authenticationModel, issueKey))
+                        .ConvertToJsonObject();
+
+                    // Extracts the options JSON fragment from the nested structure.
+                    var options = response
+                        .SelectTokens("..options")
+                        .FirstOrDefault()
+                        ?.ToString();
+
+                    // Parses the options fragment and selects the contextJwt property.
+                    var token = Newtonsoft.Json.Linq.JObject
+                        .Parse(options)
+                        .SelectToken("contextJwt")
+                        ?.ToString();
+
+                    // Returns the resolved token or an empty string when not available.
+                    return string.IsNullOrEmpty(token)
+                        ? string.Empty
+                        : token;
                 }
                 catch (Exception)
                 {
-                    return _interactiveJwt;
+                    // Returns an empty string when any error occurs during parsing or token extraction.
+                    return string.Empty;
                 }
-            }
-
-            public async Task<string> GetInteractiveIssueToken(string issue)
-            {
-                var data = Assembly
-                    .GetExecutingAssembly()
-                    .ReadEmbeddedResource("get_interactive_token.txt")
-                    .Replace("[project-key]", authenticationModel.Project)
-                    .Replace("[issue-key]", issue);
-
-                var authorization = authenticationModel.NewAuthenticationHeader();
-                var route = "/rest/gira/1/?operation=issueViewInteractiveQuery";
-                var url = authenticationModel.Collection.TrimEnd('/') + route;
-                var request = new HttpRequestMessage
-                {
-                    Content = new StringContent(data, Encoding.UTF8, "application/json"),
-                    Method = HttpMethod.Post,
-                    RequestUri = new Uri(url)
-                };
-                request.Headers.Authorization = authorization;
-
-                var response = await _httpClient.SendAsync(request);
-
-                return response.IsSuccessStatusCode
-                    ? await response.Content.ReadAsStringAsync()
-                    : "{}";
             }
 
             /// <summary>
@@ -122,44 +350,6 @@ namespace Mcp.Xray.Domain.Extensions
 
                 // Returning the Authentication header in Basic format
                 return new AuthenticationHeaderValue("Basic", encodedHeader);
-            }
-        }
-
-        extension(IDictionary<string, object> capabilities)
-        {
-            /// <summary>
-            /// Retrieves a specific capability from a dictionary of capabilities.
-            /// It attempts to find the capability by the given key and converts the result into the specified type.
-            /// If the capability is not found or an error occurs during the process, it returns the provided default value.
-            /// </summary>
-            /// <typeparam name="T">The type to which the capability value will be converted.</typeparam>
-            /// <param name="capabilities">A dictionary containing the available capabilities.</param>
-            /// <param name="capability">The key or path to the desired capability.</param>
-            /// <param name="defaultValue">The default value to return if the capability is not found or an error occurs.</param>
-            /// <returns>The value of the capability if found, otherwise the default value.</returns>
-            public T GetCapability<T>(string capability, T defaultValue)
-            {
-                try
-                {
-                    // Construct the path for selecting the capability from the capabilities dictionary
-                    var path = $"..{capability}";
-
-                    // If capabilities are provided, parse them as a JSON object; otherwise, use an empty JSON object
-                    var capabilitiesDocument = capabilities != default
-                        ? JObject.Parse(JsonSerializer.Serialize(capabilities))
-                        : JObject.Parse("{}");
-
-                    // Attempt to select the token for the specified capability path
-                    var element = capabilitiesDocument.SelectToken(path);
-
-                    // If the element is found, convert it to the desired type; otherwise, return the default value
-                    return element == null ? defaultValue : element.ToObject<T>();
-                }
-                catch (Exception)
-                {
-                    // Return the default value if any exception occurs during the process
-                    return defaultValue;
-                }
             }
         }
 
@@ -187,147 +377,41 @@ namespace Mcp.Xray.Domain.Extensions
                 }
             }
 
+            /// <summary>
+            /// Converts the current string input into a <see cref="JsonDocument"/>.  
+            /// When the input is empty or invalid JSON, the method safely falls back to an empty object.
+            /// </summary>
+            /// <returns>A <see cref="JsonDocument"/> instance representing the parsed JSON content,or an empty JSON object when parsing fails.</returns>
             public JsonDocument ConvertToJsonDocument()
             {
+                // Uses "{}" when the input is null or empty.
+                input = string.IsNullOrEmpty(input)
+                    ? "{}"
+                    : input;
+
+                // Parses the input only when it contains valid JSON.
+                // Falls back to an empty JSON object on invalid content.
+                return input.ConfirmJson()
+                    ? JsonDocument.Parse(input)
+                    : JsonDocument.Parse("{}");
+            }
+
+            /// <summary>
+            /// Converts the current string input into a JObject.
+            /// When the input is empty or invalid JSON, the method returns an empty object instead
+            /// of throwing an exception.
+            /// </summary>
+            /// <returns>A JObject created from the input string, or an empty object when the input is null, empty, or contains invalid JSON.</returns>
+            public Newtonsoft.Json.Linq.JObject ConvertToJsonObject()
+            {
+                // Falls back to an empty JSON object when the input is null or empty.
                 input = string.IsNullOrEmpty(input) ? "{}" : input;
 
-                return input.ConfirmJson() ? JsonDocument.Parse(input) : JsonDocument.Parse("{}");
-            }
-
-            public JObject ConvertToJsonObject()
-            {
-                input = string.IsNullOrEmpty(input) ? "{}" : input;
-
-                return input.ConfirmJson() ? JObject.Parse(input) : JObject.Parse("{}");
-            }
-
-            /// <summary>
-            /// Converts the provided string to a JToken.
-            /// </summary>
-            /// <param name="token">The string to convert.</param>
-            /// <returns>A JToken representation of the string.</returns>
-            public JToken ConvertToJsonToken()
-            {
-                input = string.IsNullOrEmpty(input) ? "{}" : input;
-
-                return input.ConfirmJson() ? JToken.Parse(input) : JToken.Parse("{}");
-            }
-        }
-
-        extension(JToken token)
-        {
-            public JObject ConvertToJsonObject()
-            {
-                try
-                {
-                    // Convert JToken to JSON string or use an empty object if JToken is default
-                    var json = token == default ? "{}" : $"{token}";
-
-                    // Parse the JSON string into a JObject
-                    return JObject.Parse(json);
-                }
-                catch (Exception)
-                {
-                    // Return an empty JObject in case of any exception during parsing
-                    return JObject.Parse("{}");
-                }
-            }
-        }
-
-        extension(HttpCommand command)
-        {
-            /// <summary>
-            /// Sends an HTTP command to Jira using the provided executor and default authentication.
-            /// </summary>
-            /// <param name="command">The HTTP command to send.</param>
-            /// <param name="executor">The JiraCommandsExecutor to use. If not provided, a new one with default authentication will be created.</param>
-            /// <returns>The response from the Jira server.</returns>
-            public string Send(JiraCommandInvoker executor)
-            {
-                executor ??= new JiraCommandInvoker(authentication: default);
-
-                return executor.SendCommand(command);
-            }
-
-            /// <summary>
-            /// Sends an HTTP command to Jira using the provided authentication and default executor.
-            /// </summary>
-            /// <param name="command">The HTTP command to send.</param>
-            /// <param name="authentication">The JiraAuthentication to use. If not provided, default authentication will be used.</param>
-            /// <returns>The response from the Jira server.</returns>
-            public string Send(JiraAuthenticationModel authentication)
-            {
-                authentication ??= new JiraAuthenticationModel();
-
-                return Send(command, authentication, executor: default);
-            }
-
-            /// <summary>
-            /// Sends an HTTP command to Jira using the provided authentication and executor.
-            /// </summary>
-            /// <param name="command">The HTTP command to send.</param>
-            /// <param name="authentication">The JiraAuthentication to use. If not provided, default authentication will be used.</param>
-            /// <param name="executor">The JiraCommandsExecutor to use. If not provided, a new one with the specified authentication will be created.</param>
-            /// <returns>The response from the Jira server.</returns>
-            public string Send(JiraAuthenticationModel authentication, JiraCommandInvoker executor)
-            {
-                // Create a new executor if not provided
-                executor ??= new JiraCommandInvoker(authentication ?? new());
-
-                // Send the command and return the response
-                return executor.SendCommand(command);
-            }
-        }
-
-        extension<T>(IEnumerable<T> collection)
-        {
-            public IEnumerable<IEnumerable<T>> Split(int itemsPerSet)
-            {
-                collection = collection ?? [];
-
-                var sourceList = collection.ToList();
-
-                for (int index = 0; index < sourceList.Count; index += itemsPerSet)
-                {
-                    yield return sourceList.Skip(index).Take(itemsPerSet);
-                }
-            }
-        }
-
-        extension<T>(ConcurrentBag<T> collection)
-        {
-            public void AddRange(IEnumerable<T> range)
-            {
-                foreach (T item in range)
-                {
-                    collection.Add(item);
-                }
-            }
-        }
-
-        extension(HttpResponseMessage response)
-        {
-            /// <summary>
-            /// Creates a standardized JSON response representation from an HTTP status code.
-            /// The method extracts the status code, reason phrase, and response body, then wraps
-            /// them into a serializable object for consistent error reporting.
-            /// </summary>
-            /// <param name="response">The HTTP response from which status and body information is extracted.</param>
-            /// <returns>A JSON string containing the status code, reason phrase, raw body, and a fixed identifier used to indicate that the response originated from a status-only result.</returns>
-            public string NewGenericResponse()
-            {
-                // Builds a simple JSON-compatible object that represents the error details.
-                // -1 is a static identifier indicating a synthetic or fallback response.
-                var responseObject = new
-                {
-                    Code = response.StatusCode,
-                    Reason = response.ReasonPhrase,
-                    Body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult(),
-                    Id = "-1"
-                };
-
-                // Serializes the structured response using the configured JSON options.
-                return JsonSerializer.Serialize(responseObject, _jsonOptions);
+                // Parses the string only when it contains valid JSON.
+                // Returns an empty JSON object otherwise.
+                return input.ConfirmJson()
+                    ? Newtonsoft.Json.Linq.JObject.Parse(input)
+                    : Newtonsoft.Json.Linq.JObject.Parse("{}");
             }
         }
     }
