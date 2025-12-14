@@ -19,6 +19,11 @@ namespace Mcp.Xray.Settings
     {
         #region *** Fields    ***
         /// <summary>
+        /// Represents the current version of the API supported by this client.
+        /// </summary>
+        public const string ApiVersion = "4";
+
+        /// <summary>
         /// Gets the application configuration.
         /// </summary>
         public static readonly IConfigurationRoot Configuration = NewConfiguraion();
@@ -105,14 +110,14 @@ namespace Mcp.Xray.Settings
                 // Each setting attempts to read its environment override in a single expression.
                 jiraOptions.ApiKey = GetOrDefault("JIRA_API_KEY", jiraOptions.ApiKey);
                 jiraOptions.ApiVersion = GetOrDefault("JIRA_API_VERSION", jiraOptions.ApiVersion);
-                jiraOptions.BaseUrl = GetOrDefault("JIRA_BASE_URL", jiraOptions.BaseUrl);
+                jiraOptions.BaseUrl = GetOrDefault("JIRA_BASE_URL", jiraOptions.BaseUrl).TrimEnd('/');
                 jiraOptions.BucketSize = GetOrDefault("JIRA_BUCKET_SIZE", jiraOptions.BucketSize);
                 jiraOptions.Username = GetOrDefault("JIRA_USERNAME", jiraOptions.Username);
 
                 // Xray Cloud specific settings.
                 jiraOptions.XrayCloudOptions.BaseUrl = GetOrDefault(
                     "XRAY_CLOUD_BASE_URL",
-                    jiraOptions.XrayCloudOptions.BaseUrl);
+                    jiraOptions.XrayCloudOptions.BaseUrl).TrimEnd('/');
 
                 // Return the populated Jira options model.
                 return jiraOptions;

@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
+using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -27,6 +28,9 @@ namespace Mcp.Xray.Domain.Framework
     /// <param name="authentication">The authentication model that defines the Jira credentials and project context.</param>
     public class JiraCommandInvoker(JiraAuthenticationModel authentication)
     {
+        private static long _lastUsed;
+        private static string _lastToken;
+
         #region *** Fields       ***
         // The Jira REST API version used for constructing default API routes.
         private static readonly string _apiVersion = AppSettings.JiraOptions.ApiVersion;
@@ -174,7 +178,7 @@ namespace Mcp.Xray.Domain.Framework
             // response from the handler is returned to the caller.
             if (method != default)
             {
-                return (string)method.Invoke(instance, [command]);
+                return (string)method.Invoke(instance, [instance._authentication, command]);
             }
 
             // When no handler matches the requested HTTP method, a synthetic 404 response is created
@@ -188,6 +192,25 @@ namespace Mcp.Xray.Domain.Framework
 
             // Converts the response message to a generic response format.
             return response.NewGenericResponse();
+        }
+        
+        private static void TestToken(string token)
+        {
+            var handler = new JwtSecurityTokenHandler();
+            //lock(_lastToken)
+            //{
+            //    if (_lastToken == token && (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - _lastUsed) < 60)
+            //    {
+            //        return;
+            //    }
+            //    var jwtToken = handler.ReadJwtToken(token);
+            //    var exp = jwtToken.Claims.First(i => i.Type == "exp").Value;
+            //    var expSeconds = long.Parse(exp);
+            //    var expDate = DateTimeOffset.FromUnixTimeSeconds(expSeconds);
+            //    Console.WriteLine($"Token expires at {expDate:u}");
+            //    _lastUsed = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            //    _lastToken = token;
+            //}
         }
         #endregion
 
@@ -343,6 +366,7 @@ namespace Mcp.Xray.Domain.Framework
                     return requestMessage;
                 }
 
+                // TODO: cache token and check expiration - if about to expire, issue new one
                 // Resolves the Xray JWT token using the header value as the issue key context.
                 var token = authentication.GetJwt(issueKey: command.Headers[Xacpt]).Result;
 

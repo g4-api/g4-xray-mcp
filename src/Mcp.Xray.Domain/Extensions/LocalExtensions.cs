@@ -2,6 +2,8 @@
 using Mcp.Xray.Domain.Models;
 using Mcp.Xray.Settings;
 
+using Microsoft.AspNetCore.Http;
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -149,29 +151,43 @@ namespace Mcp.Xray.Domain.Extensions
             }
         }
 
-        extension(HttpResponseMessage response)
+
+        extension(HttpRequest request)
         {
             /// <summary>
-            /// Creates a standardized JSON response representation from an HTTP status code.
-            /// The method extracts the status code, reason phrase, and response body, then wraps
-            /// them into a serializable object for consistent error reporting.
+            /// Reads the request body asynchronously and deserializes it into the specified type.
             /// </summary>
-            /// <param name="response">The HTTP response from which status and body information is extracted.</param>
-            /// <returns>A JSON string containing the status code, reason phrase, raw body, and a fixed identifier used to indicate that the response originated from a status-only result.</returns>
-            public string NewGenericResponse()
+            /// <typeparam name="T">The type to deserialize the request body into.</typeparam>
+            /// <param name="request">The HTTP request containing the body to read.</param>
+            /// <returns>A task that represents the asynchronous read operation. The task result contains the deserialized object of type <typeparamref name="T"/>.</returns>
+            /// <exception cref="NotSupportedException">Thrown when the request body is not in JSON format.</exception>
+            public async Task<T> ReadAsync<T>()
             {
-                // Builds a simple JSON-compatible object that represents the error details.
-                // -1 is a static identifier indicating a synthetic or fallback response.
-                var responseObject = new
-                {
-                    Code = response.StatusCode,
-                    Reason = response.ReasonPhrase,
-                    Body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult(),
-                    Id = "-1"
-                };
+                // Read the request body as a string.
+                var requestBody = await ReadAsync(request);
 
-                // Serializes the structured response using the configured JSON options.
-                return JsonSerializer.Serialize(responseObject, _jsonOptions);
+                // Validate that the request body is in JSON format.
+                if (!requestBody.ConfirmJson())
+                {
+                    throw new NotSupportedException("The request body must be JSON formatted.");
+                }
+
+                // Deserialize the JSON request body into the specified type.
+                return JsonSerializer.Deserialize<T>(requestBody);
+            }
+
+            /// <summary>
+            /// Reads the request body asynchronously as a string.
+            /// </summary>
+            /// <param name="request">The HTTP request containing the body to read.</param>
+            /// <returns>A task that represents the asynchronous read operation. The task result contains the request body as a string.</returns>
+            public async Task<string> ReadAsync()
+            {
+                // Create a StreamReader to read the request body stream.
+                using var streamReader = new StreamReader(request.Body);
+
+                // Read the entire request body asynchronously and return it as a string.
+                return await streamReader.ReadToEndAsync().ConfigureAwait(false);
             }
         }
 
@@ -211,6 +227,32 @@ namespace Mcp.Xray.Domain.Extensions
             }
         }
 
+        extension(HttpResponseMessage response)
+        {
+            /// <summary>
+            /// Creates a standardized JSON response representation from an HTTP status code.
+            /// The method extracts the status code, reason phrase, and response body, then wraps
+            /// them into a serializable object for consistent error reporting.
+            /// </summary>
+            /// <param name="response">The HTTP response from which status and body information is extracted.</param>
+            /// <returns>A JSON string containing the status code, reason phrase, raw body, and a fixed identifier used to indicate that the response originated from a status-only result.</returns>
+            public string NewGenericResponse()
+            {
+                // Builds a simple JSON-compatible object that represents the error details.
+                // -1 is a static identifier indicating a synthetic or fallback response.
+                var responseObject = new
+                {
+                    Code = response.StatusCode,
+                    Reason = response.ReasonPhrase,
+                    Body = response.Content.ReadAsStringAsync().GetAwaiter().GetResult(),
+                    Id = "-1"
+                };
+
+                // Serializes the structured response using the configured JSON options.
+                return JsonSerializer.Serialize(responseObject, _jsonOptions);
+            }
+        }
+
         extension<T>(IEnumerable<T> collection)
         {
             /// <summary>
@@ -223,7 +265,7 @@ namespace Mcp.Xray.Domain.Extensions
             public IEnumerable<IEnumerable<T>> Split(int itemsPerSet)
             {
                 // Ensures a non-null sequence to iterate over.
-                collection = collection ?? [];
+                collection ??= [];
 
                 // An invalid batch size produces no output.
                 if (itemsPerSet <= 0)
