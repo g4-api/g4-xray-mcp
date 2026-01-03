@@ -8,13 +8,13 @@ using System.Text.Json.Serialization;
 namespace Mcp.Xray.Domain.Repositories
 {
     /// <summary>
-    /// Defines methods for persisting and retrieving Copilot JSON-RPC operations,
+    /// Defines methods for persisting and retrieving MCP JSON-RPC operations,
     /// including tool discovery, initialization, and invocation.
     /// </summary>
-    public interface ICopilotRepository
+    public interface IToolsRepository
     {
         /// <summary>
-        /// Ges the JSON serialization options used for Copilot operations.
+        /// Ges the JSON serialization options used for MCP operations.
         /// </summary>
         public static JsonSerializerOptions JsonOptions
         {
@@ -29,6 +29,9 @@ namespace Mcp.Xray.Domain.Repositories
 
                     // Serialize dictionary keys in snake_case (e.g., "error_code").
                     DictionaryKeyPolicy = JsonNamingPolicy.CamelCase,
+
+                    // Ignore case when matching JSON property names to CLR properties.
+                    PropertyNameCaseInsensitive = true,
 
                     // Serialize CLR property names in snake_case (e.g., "request_id").
                     PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -69,8 +72,8 @@ namespace Mcp.Xray.Domain.Repositories
         /// and server information.
         /// </summary>
         /// <param name="id">The JSON-RPC request identifier to correlate response.</param>
-        /// <returns>A <see cref="CopilotInitializeResponseModel"/> containing protocol version,supported features, and server details.</returns>
-        CopilotInitializeResponseModel Initialize(object id);
+        /// <returns>A <see cref="McpInitializeResponseModel"/> containing protocol version,supported features, and server details.</returns>
+        McpInitializeResponseModel Initialize(object id);
 
         /// <summary>
         /// Invokes the specified tool with the provided parameters and returns a JSON-RPC response containing the tool's result.
@@ -78,7 +81,7 @@ namespace Mcp.Xray.Domain.Repositories
         /// </summary>
         /// <param name="parameters">The JSON parameters for invoking the tool, including tool name and arguments.</param>
         /// <param name="id">The request ID to correlate the response with the request.</param>
-        /// <returns>A <see cref="ToolResponseModel"/> containing the result of the tool execution.</returns>
+        /// <returns>An object containing the result of the tool execution.</returns>
         ToolOutputSchema InvokeTool(JsonElement parameters, object id);
     }
 }

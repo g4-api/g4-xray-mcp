@@ -17,6 +17,7 @@
 	<ItemGroup>
 		<EmbeddedResource Include="Resources\get_interactive_token.txt" />
 		<EmbeddedResource Include="Resources\get_token.txt" />
+		<EmbeddedResource Include="Definitions\**\*.*" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -29,6 +29,11 @@
         public int BucketSize { get; set; }
 
         /// <summary>
+        /// 
+        /// </summary>
+        public bool IsCloud { get; set; }
+
+        /// <summary>
         /// The username associated with the API token, used when forming authentication headers.
         /// </summary>
         public string Username { get; set; }
@@ -36,14 +41,14 @@
         /// <summary>
         /// Gets or sets the configuration options for connecting to Xray Cloud.
         /// </summary>
-        public XrayCloudOptionsModel XrayCloudOptions { get; set; }
+        public XrayOptionsModel XrayOptions { get; set; }
         #endregion
 
         #region *** Nested Types ***
         /// <summary>
         /// Represents configuration options for connecting to the Xray Cloud internal API.
         /// </summary>
-        public class XrayCloudOptionsModel
+        public class XrayOptionsModel
         {
             /// <summary>
             /// The base URL of the Xray Cloud internal API.

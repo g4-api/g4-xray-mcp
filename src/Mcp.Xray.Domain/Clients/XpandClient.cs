@@ -34,7 +34,7 @@ namespace Mcp.Xray.Domain.Clients
         // The base URL for communicating with the Xray Cloud API. This value is taken
         // from the configured application settings and represents the root endpoint
         // for all Xray HTTP requests.
-        public static readonly string _xpandBaseUrl = AppSettings.JiraOptions.XrayCloudOptions.BaseUrl;
+        public static readonly string _xpandBaseUrl = AppSettings.JiraOptions.XrayOptions.BaseUrl;
 
         // The logger instance assigned to this client. The logger is optional and is
         // used to record execution details and error information during Xray operations.

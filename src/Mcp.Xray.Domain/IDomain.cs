@@ -1,5 +1,8 @@
-﻿using Mcp.Xray.Domain.Extensions;
+﻿using Mcp.Xray.Domain.Clients;
+using Mcp.Xray.Domain.Extensions;
+using Mcp.Xray.Domain.Models;
 using Mcp.Xray.Domain.Repositories;
+using Mcp.Xray.Settings;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -23,7 +26,7 @@ namespace Mcp.Xray.Domain
         /// <summary>
         /// Gets the Copilot repository used for interacting with MCP/Copilot services.
         /// </summary>
-        ICopilotRepository Copilot { get; }
+        IToolsRepository Copilot { get; }
 
         /// <summary>
         /// Gets the current web hosting environment.
@@ -52,15 +55,50 @@ namespace Mcp.Xray.Domain
         /// management and clean startup configuration.
         /// </summary>
         /// <param name="builder">The <see cref="WebApplicationBuilder"/> used to configure services for the ASP.NET Core application.</param>
-        static void SetDependencies(WebApplicationBuilder builder)
+        public static void SetDependencies(WebApplicationBuilder builder)
         {
             // Registers the ASP adapter as a singleton.
             // This adapter is stateless and reused across the application lifetime.
             builder.Services.AddSingleton<AspAdapter>();
 
-            // Registers the Copilot repository abstraction with its concrete implementation.
-            // Singleton lifetime is appropriate as it holds no per-request state.
-            builder.Services.AddSingleton<ICopilotRepository, CopilotRepository>();
+            // Build the Jira authentication model from application configuration.
+            // This object encapsulates all credentials and connection details
+            // required to communicate with Jira and downstream Xray services.
+            var jiraAuthentication = new JiraAuthenticationModel
+            {
+                // Base Jira URL or collection endpoint.
+                Collection = AppSettings.JiraOptions.BaseUrl,
+
+                // API key or token used for authenticating requests.
+                Password = AppSettings.JiraOptions.ApiKey,
+
+                // Username associated with the API credentials.
+                Username = AppSettings.JiraOptions.Username
+            };
+
+            // Register the authentication model as a singleton so the same
+            // immutable configuration instance is reused across the application.
+            builder.Services.AddSingleton(provider => jiraAuthentication);
+
+            // Register the Jira client as a transient service.
+            // A new instance is created for each resolution to ensure that
+            // request-scoped behavior and underlying HTTP usage remain isolated.
+            builder.Services.AddTransient((_) => new JiraClient(authentication: jiraAuthentication));
+
+            // Register the Xray repository as a transient service.
+            // The concrete implementation is selected dynamically based on
+            // whether the configured Jira instance is running in Cloud mode.
+            builder.Services.AddTransient<IXrayRepository>((_) =>
+            {
+                return AppSettings.JiraOptions?.IsCloud == true
+                    ? new XrayXpandRepository(jiraAuthentication)
+                    : new XrayRavenRepository();
+            });
+
+            // Register the tools repository as a transient service.
+            // This repository is responsible for resolving, dispatching,
+            // and executing system tools during a single request lifecycle.
+            builder.Services.AddTransient<IToolsRepository, ToolsRepository>();
 
             // Registers the shared System.Text.Json serializer options used by ASP.NET Core.
             // These options are resolved from IOptions<JsonOptions> and reused application-wide

@@ -5,7 +5,7 @@
     /// This response follows the JSON-RPC 2.0 format and contains information about the server,
     /// available capabilities, and supported protocol versions.
     /// </summary>
-    public class CopilotInitializeResponseModel
+    public class McpInitializeResponseModel
     {
         /// <summary>
         /// Gets or sets the request identifier associated with this response.

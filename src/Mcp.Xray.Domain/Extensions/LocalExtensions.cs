@@ -395,6 +395,52 @@ namespace Mcp.Xray.Domain.Extensions
             }
         }
 
+        extension(JsonElement jsonElement)
+        {
+            /// <summary>
+            /// Retrieves the value of the <c>"token"</c> property from a <see cref="JsonElement"/>, 
+            /// or falls back to a default value provided by the factory function if the property does not exist 
+            /// or cannot be converted to the target type.
+            /// </summary>
+            /// <typeparam name="T">The expected type of the "token" value. Supports <see cref="string"/>, <see cref="int"/>, and <see cref="bool"/>.</typeparam>
+            /// <param name="propertyName"> The name of the property to retrieve.</param>
+            /// <param name="defaultValue">A function that produces a default value when the "token" property is missing or not supported.</param>
+            /// <returns>Returns the value of the "token" property if found and successfully converted; otherwise, returns the value produced by the <paramref name="defaultValue"/>.</returns>
+            public T GetOrDefault<T>(string propertyName, Func<T> defaultValue)
+            {
+                // Try to get the "token" property from the JSON element.
+                // This could represent an authentication token or API key.
+                var isToken = jsonElement.TryGetProperty(propertyName, out var tokenOut);
+
+                // If the "token" property does not exist, return the default value from the factory.
+                if (!isToken)
+                {
+                    return defaultValue();
+                }
+
+                // If the "token" property exists, decide how to extract its value
+                // based on its JSON value type.
+                return tokenOut.ValueKind switch
+                {
+                    // If it's a string, cast to object first, then to generic type T.
+                    JsonValueKind.String => (T)(object)tokenOut.GetString(),
+
+                    // If it's a number, interpret it as a 32-bit integer.
+                    JsonValueKind.Number => (T)(object)tokenOut.GetInt32(),
+
+                    // If it's a boolean true, return true.
+                    JsonValueKind.True => (T)(object)true,
+
+                    // If it's a boolean false, return false.
+                    JsonValueKind.False => (T)(object)false,
+
+                    // If it's any other type (array, object, null, undefined, etc.), 
+                    // fall back to the default value from the factory.
+                    _ => defaultValue()
+                };
+            }
+        }
+
         extension(string input)
         {
             /// <summary>

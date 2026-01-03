@@ -95,7 +95,7 @@ namespace Mcp.Xray.Settings
                 var jiraOptions = section.Get<JiraOptionsModel>() ?? new JiraOptionsModel();
 
                 // Ensure nested XrayCloudOptions is not null.
-                jiraOptions.XrayCloudOptions ??= new JiraOptionsModel.XrayCloudOptionsModel();
+                jiraOptions.XrayOptions ??= new JiraOptionsModel.XrayOptionsModel();
 
                 // Set default for ApiVersion if not set.
                 jiraOptions.ApiVersion = string.IsNullOrWhiteSpace(jiraOptions.ApiVersion)
@@ -115,9 +115,9 @@ namespace Mcp.Xray.Settings
                 jiraOptions.Username = GetOrDefault("JIRA_USERNAME", jiraOptions.Username);
 
                 // Xray Cloud specific settings.
-                jiraOptions.XrayCloudOptions.BaseUrl = GetOrDefault(
+                jiraOptions.XrayOptions.BaseUrl = GetOrDefault(
                     "XRAY_CLOUD_BASE_URL",
-                    jiraOptions.XrayCloudOptions.BaseUrl).TrimEnd('/');
+                    jiraOptions.XrayOptions.BaseUrl).TrimEnd('/');
 
                 // Return the populated Jira options model.
                 return jiraOptions;

@@ -1,0 +1,137 @@
+{
+	"description": "Create a new Xray Cloud test case with scenario, specifications, steps, and optional custom fields. Returns the created test key/id and a link.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"categories": {
+				"description": "Optional tags or categories for classification.",
+				"items": {
+					"type": "string"
+				},
+				"type": [ "array" ]
+			},
+			"customFields": {
+				"additionalProperties": {
+					"type": "string"
+				},
+				"description": "Optional custom field values mapped by field key.",
+				"type": [ "object" ]
+			},
+			"priority": {
+				"description": "Optional priority level (string-coded).",
+				"type": [ "string" ]
+			},
+			"project": {
+				"description": "The Jira project key (for example, PROJ).",
+				"type": [ "string" ]
+			},
+			"scenario": {
+				"description": "Short human-readable test scenario or title.",
+				"type": [ "string" ]
+			},
+			"severity": {
+				"description": "Optional severity level (string-coded).",
+				"type": [ "string" ]
+			},
+			"steps": {
+				"description": "Main test steps with one or more expected results per step.",
+				"items": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"action": {
+							"type": [ "string" ],
+							"description": "Step instruction or action to perform."
+						},
+						"expectedResults": {
+							"description": "Expected outcomes for this step.",
+							"items": {
+								"type": "string"
+							},
+							"minItems": 1,
+							"type": [ "array" ]
+						}
+					},
+					"required": [ "action", "expectedResults" ]
+				},
+				"type": [ "array" ]
+			},
+			"testSetup": {
+				"description": "Optional setup steps executed before the main steps.",
+				"items": {
+					"additionalProperties": false,
+					"properties": {
+						"action": {
+							"description": "Setup instruction or action.",
+							"type": [ "string" ]
+						},
+						"expectedResults": {
+							"description": "Expected outcomes for the setup step.",
+							"items": {
+								"type": "string"
+							},
+							"minItems": 1,
+							"type": [ "array" ]
+						}
+					},
+					"required": [ "action", "expectedResults" ],
+					"type": "object"
+				},
+				"type": [ "array" ]
+			},
+			"testSpecifications": {
+				"description": "Detailed test description or specification.",
+				"type": [ "string" ]
+			},
+			"testTeardown": {
+				"description": "Optional teardown steps executed after the main steps.",
+				"items": {
+					"additionalProperties": false,
+					"properties": {
+						"action": {
+							"description": "Teardown instruction or action.",
+							"type": [ "string" ]
+						},
+						"expectedResults": {
+							"description": "Expected outcomes for the teardown step.",
+							"items": {
+								"type": "string"
+							},
+							"minItems": 1,
+							"type": [ "array" ]
+						}
+					},
+					"required": [ "action", "expectedResults" ],
+					"type": "object"
+				},
+				"type": [ "array" ]
+			},
+			"tolerance": {
+				"description": "Optional tolerance percentage for acceptance criteria.",
+				"type": [ "number" ]
+			}
+		},
+		"required": [ "project", "scenario" ],
+		"type": "object"
+	},
+	"name": "new_xray_test",
+	"outputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"id": {
+				"description": "Created test internal identifier.",
+				"type": [ "string" ]
+			},
+			"key": {
+				"description": "Created test key (e.g. PROJECT-123).",
+				"type": [ "string" ]
+			},
+			"link": {
+				"description": "Direct URL to the created test in Jira/Xray.",
+				"type": [ "string" ]
+			}
+		},
+		"required": [ "id", "key", "link" ],
+		"type": "object"
+	}
+}

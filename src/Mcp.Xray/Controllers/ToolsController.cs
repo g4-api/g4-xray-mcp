@@ -107,7 +107,7 @@ namespace Mcp.Xray.Controllers
                 "initialize" => NewContentResult(
                     StatusCodes.Status200OK,
                     value: _domain.Copilot.Initialize(copilotRequest.Id),
-                    options: ICopilotRepository.JsonOptions),
+                    options: IToolsRepository.JsonOptions),
                 "notifications/initialized" => Accepted(),
                 "tools/list" => NewContentResult(
                     StatusCodes.Status200OK,
@@ -125,7 +125,7 @@ namespace Mcp.Xray.Controllers
         // Creates a new ContentResult with a JSON-formatted response body.
         private static ContentResult NewContentResult(int statusCode, object value)
         {
-            return NewContentResult(statusCode, value, ICopilotRepository.JsonOptions);
+            return NewContentResult(statusCode, value, IToolsRepository.JsonOptions);
         }
 
         // Creates a new ContentResult with a JSON-formatted response body.
