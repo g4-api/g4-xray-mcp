@@ -6,13 +6,15 @@ namespace Mcp.Xray.Domain.Models
 {
     public class TestCaseModel
     {
+        private static readonly StringComparer _comparer = StringComparer.OrdinalIgnoreCase;
+
         public string Actual { get; set; }
 
         public string[] Categories { get; set; } = [];
 
-        public ConcurrentDictionary<string, object> Context { get; set; } = [];
+        public ConcurrentDictionary<string, object> Context { get; set; } = new ConcurrentDictionary<string, object>(_comparer);
 
-        public ConcurrentDictionary<string, string> CustomFields { get; set; } = [];
+        public ConcurrentDictionary<string, string> CustomFields { get; set; } = new ConcurrentDictionary<string, string>(_comparer);
 
         public Dictionary<string, object>[] DataSource { get; set; } = [];
 

@@ -75,7 +75,7 @@ namespace Mcp.Xray.Domain.Clients
 
             // Load project metadata if a project key is present; otherwise fallback to an empty object.
             ProjectMeta = !string.IsNullOrEmpty(authentication.Project)
-                ? GetProjectMeta(invoker: Invoker, project: authentication.Project)
+                ? GetProjectMeta(project: authentication.Project)
                 : JsonDocument.Parse("{}").RootElement;
         }
         #endregion
@@ -352,6 +352,32 @@ namespace Mcp.Xray.Domain.Clients
                 .GetProperty("issuetype")
                 .GetProperty("name")
                 .GetString();
+        }
+
+        /// <summary>
+        /// Retrieves Jira issue creation metadata for the specified project.
+        /// </summary>
+        /// <param name="project">The Jira project key for which creation metadata is requested.</param>
+        /// <returns>A JSON element representing the project creation metadata, or a default value when no metadata is returned.</returns>
+        public JsonElement GetProjectMeta(string project)
+        {
+            // Request the issue creation metadata for the specified project
+            // and convert the response into a JSON document for inspection.
+            var jsonDocument = JiraCommands
+                .GetCreateMeta(project)
+                .Send(Invoker)
+                .ConvertToJsonDocument();
+
+            // Navigate to the "projects" array in the response.
+            // This array typically contains a single entry for the requested project.
+            var projects = jsonDocument
+                .RootElement
+                .GetProperty("projects")
+                .EnumerateArray();
+
+            // Return the first project metadata object if present.
+            // When no entries exist, this returns a default JsonElement value.
+            return projects.FirstOrDefault();
         }
 
         /// <summary>
@@ -795,26 +821,6 @@ namespace Mcp.Xray.Domain.Clients
             return issueFieldToken == null
                 ? "{}"
                 : $"{issueFieldToken}";
-        }
-
-        // Retrieves the project metadata used for issue creation, as returned by Jira's
-        // createmeta endpoint.
-        private static JsonElement GetProjectMeta(JiraCommandInvoker invoker, string project)
-        {
-            // Request the creation metadata for the specified project.
-            var jsonDocument = JiraCommands
-                .GetCreateMeta(project)
-                .Send(invoker)
-                .ConvertToJsonDocument();
-
-            // Extract the "projects" array which typically contains a single entry.
-            var projects = jsonDocument
-                .RootElement
-                .GetProperty("projects")
-                .EnumerateArray();
-
-            // Return the first metadata object (if any).
-            return projects.FirstOrDefault();
         }
 
         // Retrieves all workflow transitions available for the specified Jira issue.

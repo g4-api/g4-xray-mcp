@@ -107,17 +107,39 @@ namespace Mcp.Xray.Settings
                     ? 4
                     : jiraOptions.BucketSize;
 
+                // Set default for NumberOfRetries if not set or invalid.
+                jiraOptions.RetryOptions.MaxAttempts = jiraOptions.RetryOptions.MaxAttempts <= 0
+                    ? 3
+                    : jiraOptions.RetryOptions.MaxAttempts;
+
                 // Each setting attempts to read its environment override in a single expression.
                 jiraOptions.ApiKey = GetOrDefault("JIRA_API_KEY", jiraOptions.ApiKey);
                 jiraOptions.ApiVersion = GetOrDefault("JIRA_API_VERSION", jiraOptions.ApiVersion);
                 jiraOptions.BaseUrl = GetOrDefault("JIRA_BASE_URL", jiraOptions.BaseUrl).TrimEnd('/');
                 jiraOptions.BucketSize = GetOrDefault("JIRA_BUCKET_SIZE", jiraOptions.BucketSize);
+                jiraOptions.IsCloud = GetOrDefault("JIRA_IS_CLOUD", jiraOptions.IsCloud);
+                jiraOptions.ResolveCustomFields = GetOrDefault("JIRA_RESOLVE_CUSTOM_FIELDS", jiraOptions.ResolveCustomFields);
                 jiraOptions.Username = GetOrDefault("JIRA_USERNAME", jiraOptions.Username);
 
                 // Xray Cloud specific settings.
                 jiraOptions.XrayOptions.BaseUrl = GetOrDefault(
-                    "XRAY_CLOUD_BASE_URL",
-                    jiraOptions.XrayOptions.BaseUrl).TrimEnd('/');
+                    environmentParameter: "XRAY_CLOUD_BASE_URL",
+                    defaultValue: jiraOptions.XrayOptions.BaseUrl
+                ).TrimEnd('/');
+
+                // Override the configured retry delay with an environment variable value when present.
+                // This allows operational tuning without modifying application configuration files.
+                jiraOptions.RetryOptions.DelayMilliseconds = GetOrDefault(
+                    environmentParameter: "JIRA_DELAY_MILLISECONDS",
+                    defaultValue: jiraOptions.RetryOptions.DelayMilliseconds
+                );
+
+                // Override the maximum number of retry attempts using an environment variable.
+                // When the variable is not defined or cannot be converted, the existing configuration is preserved.
+                jiraOptions.RetryOptions.MaxAttempts = GetOrDefault(
+                    environmentParameter: "JIRA_MAX_ATTEMPTS",
+                    defaultValue: jiraOptions.RetryOptions.MaxAttempts
+                );
 
                 // Return the populated Jira options model.
                 return jiraOptions;
@@ -157,44 +179,52 @@ namespace Mcp.Xray.Settings
             return jsonOptions;
         }
 
-        // Retrieves a value from an environment variable and converts it to the specified type <typeparamref name="T"/>.
-        // If the environment variable is not found, empty, or cannot be converted, returns the provided default value.
+        // Reads an environment variable and attempts to convert its value to the specified type,
+        // returning a fallback value when the variable is missing or cannot be converted.
         private static T GetOrDefault<T>(string environmentParameter, T defaultValue)
         {
-            // Attempt to read the environment variable value
-            var envValue = Environment.GetEnvironmentVariable(environmentParameter);
+            // Read the raw value of the environment variable from the process environment.
+            var value = Environment.GetEnvironmentVariable(environmentParameter);
 
-            // If the environment variable is missing or blank, use the default value
-            if (string.IsNullOrWhiteSpace(envValue))
+            // If the variable is not set or contains only whitespace, return the provided default.
+            if (string.IsNullOrWhiteSpace(value))
             {
                 return defaultValue;
             }
 
             try
             {
-                // Check if T is a nullable type and get the underlying type
+                // Resolve the effective target type.
+                // Nullable types are unwrapped so conversion is performed against the underlying type.
                 var underlyingType = Nullable.GetUnderlyingType(typeof(T));
                 var targetType = underlyingType ?? typeof(T);
 
-                // Special handling for booleans to support "true", "false", "1", and "0"
+                // Apply explicit handling for boolean values.
+                // This supports common representations such as textual and numeric forms.
                 if (targetType == typeof(bool))
                 {
-                    if (bool.TryParse(envValue, out bool boolResult))
+                    if (bool.TryParse(value, out bool boolResult))
                     {
                         return (T)(object)boolResult;
                     }
 
-                    // Support numeric boolean representation
-                    if (envValue.Trim() == "1") return (T)(object)true;
-                    if (envValue.Trim() == "0") return (T)(object)false;
+                    return value.ToLowerInvariant() switch
+                    {
+                        "1" => (T)(object)true,
+                        "0" => (T)(object)false,
+                        "true" => (T)(object)true,
+                        "false" => (T)(object)false,
+                        _ => defaultValue
+                    };
                 }
 
-                // Attempt to convert the string value to the target type using system conversion
-                return (T)Convert.ChangeType(envValue.Trim(), targetType);
+                // Attempt to convert the string value to the target type using the system conversion facilities.
+                // Whitespace is trimmed to avoid format-related conversion failures.
+                return (T)Convert.ChangeType(value.Trim(), targetType);
             }
             catch
             {
-                // If conversion fails (e.g., invalid format), fall back to the default value
+                // If any conversion error occurs, return the default value to ensure safe fallback behavior.
                 return defaultValue;
             }
         }
