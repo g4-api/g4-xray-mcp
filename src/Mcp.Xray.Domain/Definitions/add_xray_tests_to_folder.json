@@ -1,0 +1,56 @@
+﻿{
+	"description": "Add Xray tests selected by a JQL query to a Test Repository folder. Returns the affected folder details and which tests were added or skipped.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"jql": {
+				"description": "JQL query used to select the tests to add (e.g., project = PROJ AND issuetype = Test).",
+				"type": [ "string" ]
+			},
+			"path": {
+				"description": "Target Test Repository folder path (e.g., Regression/Ui/Login). If omitted or empty, the root folder is used.",
+				"type": [ "string" ]
+			},
+			"project": {
+				"description": "The Jira project key (for example, PROJ).",
+				"type": [ "string" ]
+			}
+		},
+		"required": [ "project", "jql" ],
+		"type": "object"
+	},
+	"name": "add_xray_tests_to_folder",
+	"outputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"added": {
+				"description": "Test keys successfully added to the folder.",
+				"items": {
+					"type": "string"
+				},
+				"type": [ "array" ]
+			},
+			"folderId": {
+				"description": "Repository folder id.",
+				"type": [ "string" ]
+			},
+			"link": {
+				"description": "Direct URL to the folder in Jira/Xray (if available).",
+				"type": [ "string" ]
+			},
+			"path": {
+				"description": "Repository path where tests were added.",
+				"type": [ "string" ]
+			},
+			"skipped": {
+				"description": "Test keys not added (already in folder or not eligible).",
+				"items": {
+					"type": "string"
+				},
+				"type": [ "array" ]
+			}
+		},
+		"required": [ "path", "folderId", "added", "skipped" ],
+		"type": "object"
+	}
+}

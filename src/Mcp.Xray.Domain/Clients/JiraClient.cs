@@ -311,7 +311,36 @@ namespace Mcp.Xray.Domain.Clients
         public IEnumerable<JsonElement> GetIssues(string jql)
         {
             // Delegate the query execution to the underlying search helper.
-            return FindByQuery(Invoker, jql);
+            return FindByQuery(Invoker, maxResults: 0, jql);
+        }
+
+        /// <summary>
+        /// Retrieves Jira issues that match the specified JQL query
+        /// and returns only the requested issue fields.
+        /// </summary>
+        /// <param name="jql">The JQL query string used to select matching issues.</param>
+        /// <param name="fields">The set of issue fields to include in the query response.</param>
+        /// <returns>An enumerable collection of <see cref="JsonElement"/> objects, each representing a Jira issue returned by the query.</returns>
+        public IEnumerable<JsonElement> GetIssues(string jql, params string[] fields)
+        {
+            // Delegate execution of the JQL query to the shared search helper.
+            // A maxResults value of zero allows the helper to apply default
+            // pagination or batching behavior.
+            return FindByQuery(Invoker, maxResults: 0, jql, fields);
+        }
+
+        /// <summary>
+        /// Retrieves Jira issues that match the specified JQL query.
+        /// </summary>
+        /// <param name="jql">The JQL query string used to select matching issues.</param>
+        /// <param name="maxResults">The maximum number of issues to return from the query.</param>
+        /// <returns>An enumerable collection of <see cref="JsonElement"/> objects, each representing a Jira issue returned by the query.</returns>
+        public IEnumerable<JsonElement> GetIssues(string jql, int maxResults)
+        {
+            // Delegate the execution of the JQL query to the shared search helper.
+            // This helper is responsible for invoking the Jira API and handling
+            // result pagination or limits as required.
+            return FindByQuery(Invoker, maxResults, jql);
         }
 
         /// <summary>
@@ -352,6 +381,24 @@ namespace Mcp.Xray.Domain.Clients
                 .GetProperty("issuetype")
                 .GetProperty("name")
                 .GetString();
+        }
+
+        /// <summary>
+        /// Retrieves Jira project details using the specified project identifier or key.
+        /// </summary>
+        /// <param name="idOrKey">The Jira project identifier or project key used to resolve the project.</param>
+        /// <returns>A <see cref="JsonElement"/> representing the project details returned by Jira.</returns>
+        public JsonElement GetProject(string idOrKey)
+        {
+            // Execute a request to retrieve project details for the specified identifier or key
+            // and convert the HTTP response into a JSON document for structured access.
+            var jsonDocument = JiraCommands
+                .GetProject(idOrKey)
+                .Send(Invoker)
+                .ConvertToJsonDocument();
+
+            // Return the root JSON element, which represents the full project payload.
+            return jsonDocument.RootElement;
         }
 
         /// <summary>
@@ -759,7 +806,7 @@ namespace Mcp.Xray.Domain.Clients
             // Execute each JQL query in parallel and add results to the shared bag.
             Parallel.ForEach(jqls, parallelOptions, jql =>
             {
-                var items = FindByQuery(invoker, jql);
+                var items = FindByQuery(invoker, maxResults: 0, jql);
                 objectCollection.AddRange(items);
             });
 
@@ -771,11 +818,13 @@ namespace Mcp.Xray.Domain.Clients
         // Executes a JQL query and returns the matching issues as JSON elements.
         private static IEnumerable<JsonElement> FindByQuery(
             JiraCommandInvoker invoker,
-            string jql)
+            int maxResults,
+            string jql,
+            params string[] fields)
         {
             // Execute the JQL search request and retrieve the raw issue array.
             var issues = JiraCommands
-                .FindIssues(jql)
+                .FindIssues(jql, maxResults, (fields == null || fields.Length == 0 ? [] : fields))
                 .Send(invoker)
                 .ConvertToJsonDocument()
                 .RootElement

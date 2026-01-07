@@ -77,21 +77,49 @@ namespace Mcp.Xray.Domain.Framework
         /// <param name="jql">The JQL expression used to filter issues.</param>
         /// <param name="fields">Optional list of fields to return. If empty, Jira will decide the default set.</param>
         /// <returns>An <see cref="HttpCommand"/> configured for Jira's search API.</returns>
-        public static HttpCommand FindIssues(string jql, params string[] fields) => new()
+        public static HttpCommand FindIssues(string jql, params string[] fields)
         {
-            // Jira requires the JQL query to be wrapped in a JSON body.
-            Data = new
+            return FindIssues(jql, maxResults: 0, fields);
+        }
+
+        /// <summary>
+        /// Creates an HTTP command that executes a Jira JQL search and returns matching issues.
+        /// </summary>
+        /// <param name="jql">The JQL query string used to filter and select issues.</param>
+        /// <param name="maxResults"> The maximum number of issues to return. A value less than or equal to zero indicates that Jira defaults should be applied.</param>
+        /// <param name="fields">An optional list of issue fields to include in the response. When omitted, Jira returns its default field set.</param>
+        /// <returns>An <see cref="HttpCommand"/> configured to perform a JQL search request.</returns>
+        public static HttpCommand FindIssues(string jql, int maxResults, params string[] fields)
+        {
+            // Build the request payload for the JQL search.
+            // The fields array is included only when explicitly provided.
+            var data = new Dictionary<string, object>
             {
-                Jql = jql,
-                Fields = fields.Length > 0 ? fields : []  // Use explicit field selection when provided.
-            },
+                ["jql"] = jql,
+                ["fields"] = fields == null || fields.Length > 0 ? fields : []
+            };
 
-            // Jira's search API is accessed via POST, even when simply querying.
-            Method = HttpMethod.Post,
+            // Apply an explicit maxResults value only when a positive limit is specified.
+            // This allows Jira to fall back to its default paging behavior when omitted.
+            if (maxResults > 0)
+            {
+                data["maxResults"] = maxResults;
+            }
 
-            // Build the full route to the JQL search endpoint.
-            Route = $"{_baseRoute}/search/jql"
-        };
+            // Construct and return the HTTP command targeting Jira's JQL search endpoint.
+            // Jira exposes this operation via POST, even for read-only queries.
+            return new()
+            {
+                // The constructed JQL search payload.
+                Data = data,
+
+                // Jira's search API is accessed via POST to support complex query payloads.
+                Method = HttpMethod.Post,
+
+                // Build the full route to the JQL search endpoint.
+                Route = $"{_baseRoute}/search/jql"
+            };
+        }
 
         /// <summary>
         /// Creates an <see cref="HttpCommand"/> that retrieves all users who can be assigned 
@@ -154,6 +182,23 @@ namespace Mcp.Xray.Domain.Framework
                 Data = default,
                 Method = HttpMethod.Get,
                 Route = $"{_baseRoute}/issue/{idOrKey}{queryString}"
+            };
+        }
+
+        /// <summary>
+        /// Creates an HTTP command that retrieves a Jira project by its identifier or key.
+        /// </summary>
+        /// <param name="idOrKey">The Jira project identifier or project key used to resolve the project.</param>
+        /// <returns>An <see cref="HttpCommand"/> configured to perform a GET request against the Jira project endpoint.</returns>
+        public static HttpCommand GetProject(string idOrKey)
+        {
+            // Construct a GET command targeting the Jira project endpoint.
+            // This operation does not require a request body.
+            return new HttpCommand
+            {
+                Data = default,
+                Method = HttpMethod.Get,
+                Route = $"{_baseRoute}/project/{idOrKey}"
             };
         }
 

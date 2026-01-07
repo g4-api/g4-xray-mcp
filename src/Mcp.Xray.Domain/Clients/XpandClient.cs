@@ -214,6 +214,45 @@ namespace Mcp.Xray.Domain.Clients
         }
 
         /// <summary>
+        /// Moves one or more Xray test issues into a specified folder
+        /// within the Xray Test Repository for the given Jira project.
+        /// </summary>
+        /// <param name="idOrKey">The Jira project identifier or project key that defines the repository scope.</param>
+        /// <param name="folderId">The identifier of the target Xray Test Repository folder.</param>
+        /// <param name="issueIds">The identifiers of the test issues to be moved into the folder.</param>
+        /// <returns>A <see cref="JsonElement"/> representing the response returned by the internal Xray Test Repository assignment endpoint.</returns>
+        public JsonElement AddTestsToFolder(
+            string idOrKey,
+            string folderId,
+            params string[] issueIds)
+        {
+            // Retrieve the Jira project to obtain both the project identifier and project key.
+            // The project identifier is required by the internal Xray repository endpoint.
+            var project = JiraClient.GetProject(idOrKey);
+
+            // Extract the project identifier and key from the project payload.
+            var projectId = project.GetProperty("id").GetString();
+            var key = project.GetProperty("key").GetString();
+
+            // Resolve a representative issue key within the project.
+            // The internal Xray Test Repository endpoint expects an issue key
+            // as part of the request headers or validation flow.
+            var issueKey = JiraClient
+                .GetIssues(jql: $"project = {key}", maxResults: 1)
+                .First()
+                .GetProperty("key")
+                .GetString();
+
+            // Invoke the internal Xray endpoint responsible for moving test issues
+            // into the specified repository folder and return the response payload.
+            return XpandCommands
+                .AddTestsToFolder(projectId, issueKey, folderId, issueIds)
+                .Send(JiraClient.Invoker)
+                .ConvertToJsonDocument()
+                .RootElement;
+        }
+
+        /// <summary>
         /// Adds one or more Xray test issues to an existing Xray test set.
         /// The method forwards the request to the Xray command layer and returns
         /// the parsed JSON response produced by the API.
@@ -680,6 +719,45 @@ namespace Mcp.Xray.Domain.Clients
         }
 
         /// <summary>
+        /// Creates a new folder in the Xray Test Repository for the specified Jira project.
+        /// </summary>
+        /// <param name="idOrKey">The Jira project identifier or project key that defines the repository scope.</param>
+        /// <param name="name">The display name of the folder to be created.</param>
+        /// <param name="parentId">The identifier of the parent folder. When null or empty, the folder is created at the root level of the repository.</param>
+        /// <returns>A <see cref="JsonElement"/> representing the response returned by the internal Xray Test Repository folder creation endpoint.</returns>
+        public JsonElement NewTestRepositoryFolder(string idOrKey, string name, string parentId)
+        {
+            // Retrieve the Jira project to obtain both the project identifier and project key.
+            // The project identifier is required by the internal Xray repository endpoint.
+            var project = JiraClient.GetProject(idOrKey);
+
+            // Extract the project identifier and key from the project payload.
+            var projectId = project.GetProperty("id").GetString();
+            var key = project.GetProperty("key").GetString();
+
+            // Resolve a representative issue key within the project.
+            // The internal Xray Test Repository endpoint expects an issue key
+            // as part of the request headers or validation flow.
+            var issueKey = JiraClient
+                .GetIssues(jql: $"project = {key}", maxResults: 1)
+                .First()
+                .GetProperty("key")
+                .GetString();
+
+            // Normalize the parent folder identifier.
+            // An empty value indicates creation at the repository root.
+            parentId = string.IsNullOrEmpty(parentId) ? string.Empty : parentId;
+
+            // Invoke the internal Xray endpoint responsible for creating a repository folder
+            // and return the root JSON element from the response payload.
+            return XpandCommands
+                .NewTestRepositoryFolder(projectId, issueKey, name, parentId)
+                .Send(JiraClient.Invoker)
+                .ConvertToJsonDocument()
+                .RootElement;
+        }
+
+        /// <summary>
         /// Creates a new step in an Xray test issue. The method forwards the supplied action,
         /// expected result, and insertion index to the Xray command layer and returns the parsed
         /// JSON response produced by the API.
@@ -728,6 +806,36 @@ namespace Mcp.Xray.Domain.Clients
                 .Send(JiraClient.Invoker)
                 .ConvertToJsonDocument()
                 .RootElement;
+        }
+
+        /// <summary>
+        /// Resolves an Xray Test Repository folder path to its corresponding folder identifier
+        /// within the specified Jira project.
+        /// </summary>
+        /// <param name="idOrKey">The Jira project identifier or project key that defines the repository scope.</param>
+        /// <param name="path">The repository folder path to resolve, using forward slashes as separators.</param>
+        /// <returns>The folder identifier corresponding to the resolved path.</returns>
+        public string ResolveFolderPath(string idOrKey, string path)
+        {
+            // Retrieve the Jira project to obtain both the project identifier and key.
+            // The project identifier is required by the internal Xray repository endpoint.
+            var project = JiraClient.GetProject(idOrKey);
+
+            // Extracts the project id and key from the project payload.
+            var projectId = project.GetProperty("id").GetString();
+            var key = project.GetProperty("key").GetString();
+
+            // Resolve a representative issue key within the project.
+            // The internal Xray Test Repository endpoint expects an issue key context
+            // as part of the request headers or validation flow.
+            var issueKey = JiraClient
+                .GetIssues(jql: $"project = {key}", maxResults: 1)
+                .First()
+                .GetProperty("key")
+                .GetString();
+
+            // Delegates to the internal folder path resolver with the extracted identifiers.
+            return ResolveFolderPath(JiraClient, projectId, issueKey, path);
         }
 
         /// <summary>
@@ -863,6 +971,53 @@ namespace Mcp.Xray.Domain.Clients
 
             // Returns the fully expanded test case collection.
             return testCasesResult;
+        }
+
+        private static string ResolveFolderPath(JiraClient jiraClient, string projectId, string issueKey, string path)
+        {
+            // Request the repository payload for the project, which includes the full folder list.
+            // This endpoint is internal to the Xray UI and may change between versions.
+            var repository = XpandCommands
+                .GetTestRepository(issueKey, projectId)
+                .Send(jiraClient.Invoker)
+                .ConvertToJsonDocument()
+                .RootElement;
+
+            // Extract the folders collection that represents the repository hierarchy.
+            var folders = repository.GetProperty("folders");
+
+            // Split the path into folder segments and ignore empty segments
+            // to support leading or trailing slashes.
+            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            // Resolve the root folder identifier and use it as the starting point.
+            // Root is identified by an explicit flag in the repository payload.
+            var root = folders.EnumerateArray()
+                .First(x => x.GetProperty("isRoot").GetBoolean());
+
+            var currentId = root.GetProperty("folderId").GetString()!;
+
+            // Walk the folder hierarchy by resolving each path segment as a child folder
+            // under the current folder identifier.
+            foreach (var segment in segments)
+            {
+                // Locate the child folder whose parent matches the current folder
+                // and whose name matches the current path segment.
+                var childId = folders
+                    .EnumerateArray()
+                    .First(x =>
+                        x.TryGetProperty("parentFolderId", out var p) &&
+                        p.GetString() == currentId &&
+                        x.GetProperty("name").GetString() == segment)
+                    .GetProperty("folderId")
+                    .GetString()!;
+
+                // Advance the cursor to the resolved child folder.
+                currentId = childId;
+            }
+
+            // Return the identifier of the final resolved folder.
+            return currentId;
         }
         #endregion
     }

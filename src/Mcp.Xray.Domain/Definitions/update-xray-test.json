@@ -1,0 +1,137 @@
+{
+	"name": "update_xray_test",
+	"description": "Update an existing Xray Cloud test case. Allows modifying scenario, specifications, steps, setup/teardown, metadata, and custom fields. Returns the updated test key/id and a link.",
+	"inputSchema": {
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"key": {
+				"description": "The Jira/Xray test key to update (e.g. PROJECT-123).",
+				"type": [ "string" ]
+			},
+			"scenario": {
+				"description": "Updated human-readable test scenario or title.",
+				"type": [ "string" ]
+			},
+			"categories": {
+				"description": "Updated tags or categories for classification. Replaces existing values if provided.",
+				"items": {
+					"type": "string"
+				},
+				"type": [ "array" ]
+			},
+			"priority": {
+				"description": "Updated priority level (string-coded).",
+				"type": [ "string" ]
+			},
+			"severity": {
+				"description": "Updated severity level (string-coded).",
+				"type": [ "string" ]
+			},
+			"tolerance": {
+				"description": "Updated tolerance percentage for acceptance criteria.",
+				"type": [ "number" ]
+			},
+			"testSpecifications": {
+				"description": "Updated detailed test description or specification.",
+				"type": [ "string" ]
+			},
+			"customFields": {
+				"description": "Updated custom field values mapped by field key. Provided fields overwrite existing values.",
+				"additionalProperties": {
+					"type": "string"
+				},
+				"type": [ "object" ]
+			},
+			"testSetup": {
+				"description": "Updated setup steps executed before the main steps. Replaces existing setup if provided.",
+				"items": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"action": {
+							"description": "Setup instruction or action.",
+							"type": [ "string" ]
+						},
+						"expectedResults": {
+							"description": "Expected outcomes for the setup step.",
+							"items": {
+								"type": "string"
+							},
+							"minItems": 1,
+							"type": [ "array" ]
+						}
+					},
+					"required": [ "action", "expectedResults" ]
+				},
+				"type": [ "array" ]
+			},
+			"steps": {
+				"description": "Updated main test steps with one or more expected results per step. Replaces existing steps if provided.",
+				"items": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"action": {
+							"description": "Step instruction or action to perform.",
+							"type": [ "string" ]
+						},
+						"expectedResults": {
+							"description": "Expected outcomes for this step.",
+							"items": {
+								"type": "string"
+							},
+							"minItems": 1,
+							"type": [ "array" ]
+						}
+					},
+					"required": [ "action", "expectedResults" ]
+				},
+				"type": [ "array" ]
+			},
+			"testTeardown": {
+				"description": "Updated teardown steps executed after the main steps. Replaces existing teardown if provided.",
+				"items": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"action": {
+							"description": "Teardown instruction or action.",
+							"type": [ "string" ]
+						},
+						"expectedResults": {
+							"description": "Expected outcomes for the teardown step.",
+							"items": {
+								"type": "string"
+							},
+							"minItems": 1,
+							"type": [ "array" ]
+						}
+					},
+					"required": [ "action", "expectedResults" ]
+				},
+				"type": [ "array" ]
+			}
+		},
+		"required": [ "key" ]
+	},
+	"outputSchema": {
+		"type": "object",
+		"additionalProperties": false,
+		"properties": {
+			"id": {
+				"description": "Updated test internal identifier.",
+				"type": [ "string" ]
+			},
+			"key": {
+				"description": "Updated test key (e.g. PROJECT-123).",
+				"type": [ "string" ]
+			},
+			"link": {
+				"description": "Direct URL to the updated test in Jira/Xray.",
+				"type": [ "string" ]
+			}
+		},
+		"required": [ "id", "key", "link" ]
+	}
+}

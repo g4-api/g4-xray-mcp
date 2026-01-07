@@ -1,0 +1,42 @@
+{
+	"description": "Create a new folder in the Xray Cloud Test Repository under an optional parent path. If no path is provided, the folder is created under the repository root.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"name": {
+				"description": "Folder name to create under the parent path.",
+				"type": [ "string" ]
+			},
+			"path": {
+				"description": "Optional parent folder path in the Xray Test Repository (e.g., Regression/Ui/Login, Sanity/Api). If omitted or empty, the folder is created under the root.",
+				"type": [ "string" ]
+			},
+			"project": {
+				"description": "The Jira project key (for example, PROJ).",
+				"type": [ "string" ]
+			}
+		},
+		"required": [ "project", "name" ],
+		"type": "object"
+	},
+	"name": "new_xray_test_repository_folder",
+	"outputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"id": {
+				"description": "Created folder identifier.",
+				"type": [ "string" ]
+			},
+			"link": {
+				"description": "Direct URL to open the folder in Jira/Xray (if available).",
+				"type": [ "string" ]
+			},
+			"path": {
+				"description": "Full repository path of the created folder.",
+				"type": [ "string" ]
+			}
+		},
+		"required": [ "id", "path" ],
+		"type": "object"
+	}
+}

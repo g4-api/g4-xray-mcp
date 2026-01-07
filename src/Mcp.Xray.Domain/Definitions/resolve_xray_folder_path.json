@@ -1,0 +1,34 @@
+{
+	"description": "Resolve a logical folder path within a Jira/Xray project test repository and return the corresponding folder identifier.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"path": {
+				"description": "Hierarchical folder path to resolve within the project's test repository (e.g. \"Root/Backend/Login\").",
+				"type": [ "string" ]
+			},
+			"project": {
+				"description": "The Jira project key in which the folder path should be resolved (e.g. PROJECT).",
+				"type": [ "string" ]
+			}
+		},
+		"required": [ "project", "path" ],
+		"type": "object"
+	},
+	"name": "resolve_xray_folder_path",
+	"outputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"id": {
+				"description": "Resolved internal identifier of the folder.",
+				"type": [ "string" ]
+			},
+			"path": {
+				"description": "Normalized folder path that was resolved.",
+				"type": [ "string" ]
+			}
+		},
+		"required": [ "id", "path" ],
+		"type": "object"
+	}
+}

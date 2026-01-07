@@ -268,6 +268,36 @@ namespace Mcp.Xray.Domain.Repositories
 
         private static class Tools
         {
+            // Adds Xray test cases selected by a JQL query to a specified folder
+            // in the Xray Test Repository.
+            [SystemTool("add_xray_tests_to_folder")]
+            public static object AddXrayTestsToFolder(InvokeOptions options)
+            {
+                // Extract the Jira project identifier or project key from the invocation arguments.
+                // This value defines the scope of the Xray Test Repository.
+                var project = options.Arguments.GetProperty("project").GetString();
+
+                // Extract the JQL query used to select the test issues
+                // that will be moved into the target repository folder.
+                var jql = options.Arguments.GetProperty("jql").GetString();
+
+                // Attempt to extract the repository folder path.
+                // When not provided, the root folder is assumed.
+                var hasPath = options.Arguments.TryGetProperty("path", out JsonElement pathOut);
+
+                // Normalize the path so downstream logic can treat an empty value
+                // as a request to operate at the repository root.
+                var path = hasPath ? pathOut.GetString() : string.Empty;
+
+                // Delegate the folder assignment logic to the Xray repository implementation.
+                // The repository is responsible for resolving the folder path,
+                // executing the JQL query, and invoking the internal Xray API.
+                return options.Xray.AddTestsToFolder(
+                    idOrKey: project,
+                    path: path,
+                    jql: jql);
+            }
+
             // Creates a new Xray test case in Jira based on the provided invocation options.
             // The invocation context containing the resolved Jira project and the
             // serialized test case definition supplied by the caller.
@@ -285,6 +315,66 @@ namespace Mcp.Xray.Domain.Repositories
                 // Delegate the creation of the test case to the Xray repository,
                 // which handles communication with the underlying Xray API.
                 return options.Xray.NewTest(project, testCase);
+            }
+
+            // Resolves an Xray Test Repository folder path to its corresponding folder identifier
+            // within the specified Jira project.
+            [SystemTool("resolve_xray_folder_path")]
+            public static object ResolveFolderPath(InvokeOptions options)
+            {
+                // Extract the Jira project identifier or key from the invocation arguments.
+                // This value defines the scope of the Xray Test Repository.
+                var project = options.Arguments.GetProperty("project").GetString();
+
+                // Extract the hierarchical repository folder path to resolve.
+                // The path is expected to use forward slashes as separators.
+                var path = options.Arguments.GetProperty("path").GetString();
+
+                // Delegate the resolution logic to the Xray repository implementation,
+                // which handles interaction with the Xray Test Repository structure.
+                return options.Xray.ResolveFolderPath(project, path);
+            }
+
+            // Creates a new folder in the Xray Test Repository for the specified Jira project.
+            [SystemTool("new_xray_test_repository_folder")]
+            public static object NewXrayTestRepositoryFolder(InvokeOptions options)
+            {
+                // Extract the Jira project identifier or project key from the invocation arguments.
+                // This value defines the scope of the Xray Test Repository.
+                var project = options.Arguments.GetProperty("project").GetString();
+
+                // Extract the display name of the new repository folder to be created.
+                var name = options.Arguments.GetProperty("name").GetString();
+
+                // Attempt to extract the parent repository folder path.
+                // When not provided, the folder will be created at the repository root.
+                var hasPath = options.Arguments.TryGetProperty("path", out JsonElement pathOut);
+
+                // Normalize the path value so downstream logic can treat an empty path
+                // as a request to create the folder at the root level.
+                var path = hasPath ? pathOut.GetString() : string.Empty;
+
+                // Delegate the folder creation logic to the Xray repository implementation,
+                // which handles path resolution and interaction with the internal Xray API.
+                return options.Xray.NewTestRepositoryFolder(project, name, path);
+            }
+
+            // Updates an existing Xray test case in Jira using the provided invocation context.
+            // The invocation arguments must include the test key and the updated test case definition.
+            [SystemTool("update_xray_test")]
+            public static object UpdateXrayTest(InvokeOptions options)
+            {
+                // Extract the Jira issue key that uniquely identifies the existing Xray test.
+                // This key is required in order to locate and update the correct test entity.
+                var key = options.Arguments.GetProperty("key").GetString();
+
+                // Deserialize the updated test case definition from the invocation arguments
+                // into a strongly typed domain model using the configured JSON options.
+                var testCase = options.Arguments.Deserialize<TestCaseModel>(AppSettings.JsonOptions);
+
+                // Delegate the update operation to the Xray repository, which encapsulates
+                // all Jira and Xray-specific update logic and communication.
+                return options.Xray.UpdateTest(key, testCase);
             }
         }
         #endregion

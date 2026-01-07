@@ -108,6 +108,48 @@ namespace Mcp.Xray.Domain.Framework
         }
 
         /// <summary>
+        /// Creates an HTTP command that moves one or more Xray tests into
+        /// a specified folder within the Xray Test Repository.
+        /// </summary>
+        /// <param name="projectId">The Jira project identifier that defines the repository scope.</param>
+        /// <param name="issueKey">A Jira issue key used to satisfy Xray internal request validation headers.</param>
+        /// <param name="folderId">The identifier of the target Xray Test Repository folder.</param>
+        /// <param name="issueIds">The identifiers of the test issues to be moved into the folder.</param>
+        /// <returns>An <see cref="HttpCommand"/> configured to invoke the internal Xray test-to-folder assignment endpoint.</returns>
+        public static HttpCommand AddTestsToFolder(
+            string projectId,
+            string issueKey,
+            string folderId,
+            params string[] issueIds)
+        {
+            // Construct a POST command targeting the internal Xray Test Repository
+            // endpoint responsible for moving tests into a folder.
+            // This endpoint is used by the Jira UI and is not part of the public Xray REST API.
+            return new HttpCommand
+            {
+                // Populate the request payload with the project scope, target folder,
+                // and the identifiers of the test issues to be moved.
+                Data = new
+                {
+                    FolderId = folderId,
+                    IssueIds = issueIds,
+                    ProjectId = projectId,
+                    SkipTestValidation = false
+                },
+
+                // Attach the internal Xray headers required for request validation.
+                // These headers typically reference an existing Jira issue key.
+                Headers = NewHeaders(issueKey),
+
+                // Use POST as required by the internal move operation.
+                Method = HttpMethod.Post,
+
+                // Target the internal Xray route responsible for assigning tests to folders.
+                Route = "/api/internal/test-repository/move-tests-to-folder"
+            };
+        }
+
+        /// <summary>
         /// Creates an <see cref="HttpCommand"/> that adds one or more test issues to an Xray test set.
         /// The method prepares the request body using the provided test identifiers and sends the request
         /// to the relevant Xray endpoint responsible for managing test set contents.
@@ -325,6 +367,32 @@ namespace Mcp.Xray.Domain.Framework
         }
 
         /// <summary>
+        /// Creates an HTTP command that retrieves the Xray Test Repository structure
+        /// for the specified Jira project.
+        /// </summary>
+        /// <param name="projectId">The Jira project identifier used to resolve the test repository tree.</param>
+        /// <returns>An <see cref="HttpCommand"/> configured to invoke the internal Xray test repository endpoint.</returns>
+        public static HttpCommand GetTestRepository(string key, string projectId)
+        {
+            // Construct a POST command targeting the internal Xray Test Repository endpoint.
+            // This endpoint is used by the Jira UI to load the folder-based test repository tree
+            // and is not part of the public, supported Xray REST API.
+            return new HttpCommand
+            {
+                // Provide the project identifier in the request body as expected
+                // by the internal Xray endpoint.
+                Data = new
+                {
+                    ProjectId = projectId
+                },
+
+                Headers = NewHeaders(issueKey: key),
+                Method = HttpMethod.Post,
+                Route = "/api/internal/test-repository"
+            };
+        }
+
+        /// <summary>
         /// Creates an <see cref="HttpCommand"/> that posts a new comment to an Xray test execution.
         /// The method prepares the required request body and sends the comment to the
         /// internal Xray endpoint responsible for handling test run comments.
@@ -342,6 +410,48 @@ namespace Mcp.Xray.Domain.Framework
                 Headers = NewHeaders(issueKey: idAndKey.Key),
                 Method = HttpMethod.Post,
                 Route = $"/api/internal/testRun/{idAndKey.Id}/comment"
+            };
+        }
+
+        /// <summary>
+        /// Creates an HTTP command that creates a new folder in the Xray Test Repository
+        /// under the specified Jira project.
+        /// </summary>
+        /// <param name="projectId">The Jira project identifier used to scope the test repository operation.</param>
+        /// <param name="issueKey">A Jira issue key used to satisfy Xray internal request validation headers.</param>
+        /// <param name="name">The display name of the folder to be created.</param>
+        /// <param name="parentId">The identifier of the parent folder. When empty, the folder is created at the root level.</param>
+        /// <returns>An <see cref="HttpCommand"/> configured to invoke the internal Xray folder creation endpoint.</returns>
+        public static HttpCommand NewTestRepositoryFolder(
+            string projectId,
+            string issueKey,
+            string name,
+            string parentId)
+        {
+            // Construct a POST command targeting the internal Xray Test Repository
+            // folder creation endpoint. This endpoint is used by the Jira UI
+            // and is not part of the public Xray REST API.
+            return new HttpCommand
+            {
+                // Populate the request payload with the folder name, project scope,
+                // and parent folder identifier. A parent value of "-1" represents
+                // the repository root in Xray's internal model.
+                Data = new
+                {
+                    Name = name,
+                    ParentFolderId = string.IsNullOrEmpty(parentId) ? "-1" : parentId,
+                    ProjectId = projectId
+                },
+
+                // Attach internal Xray headers required for request validation.
+                // These headers typically reference an existing issue key.
+                Headers = NewHeaders(issueKey),
+
+                // Use POST as required by the internal folder creation endpoint.
+                Method = HttpMethod.Post,
+
+                // Target the internal Xray route responsible for creating repository folders.
+                Route = "/api/internal/test-repository/create-folder"
             };
         }
 

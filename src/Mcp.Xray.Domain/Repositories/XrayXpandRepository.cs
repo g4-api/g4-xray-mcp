@@ -5,8 +5,10 @@ using Mcp.Xray.Settings;
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Mcp.Xray.Domain.Repositories
 {
@@ -31,6 +33,47 @@ namespace Mcp.Xray.Domain.Repositories
         // This client handles communication with the Xpand API layer and is
         // responsible for extending Jira test issues with Xray metadata.
         private readonly XpandClient _xpandClient = new(jiraAuthentication);
+
+        // Moves Jira issues selected by a JQL query into a folder in the Xray Test Repository.
+        public object AddTestsToFolder(string idOrKey, string path, string jql)
+        {
+            // Resolve the repository folder identifier from the provided path.
+            // This identifier is required by the internal Xray move operation.
+            var folderId = _xpandClient.ResolveFolderPath(idOrKey, path);
+
+            // Treat an empty folder identifier as a failed resolution and raise
+            // a domain-specific exception to signal a missing repository node.
+            if (string.IsNullOrEmpty(folderId))
+            {
+                throw new XrayTestRepositoryFolderNotFoundException(
+                    message: $"Xray test repository folder not found at path {path}."
+                );
+            }
+
+            // Execute the JQL query and extract issue identifiers for the move operation.
+            // The internal Xray endpoint expects issue ids, so the response is projected
+            // and filtered to include only valid identifiers.
+            var issueIds = _jiraClient
+                .GetIssues(jql: jql, "key")
+                .Select(i => i.TryGetProperty("id", out JsonElement idOut) ? idOut.GetString() : string.Empty)
+                .Where(i => !string.IsNullOrEmpty(i))
+                .ToArray();
+
+            // Invoke the internal Xray endpoint that performs the move into the repository folder.
+            var response = _xpandClient.AddTestsToFolder(idOrKey, folderId, issueIds);
+
+            // TODO: Add links when supported by Xpand API or composed manually.
+            // Return a minimal consumer-friendly summary alongside the raw response payload.
+            return new
+            {
+                Added = issueIds.Length,
+                FolderId = folderId,
+                Link = string.Empty,
+                Path = path,
+                Skipped = 0,
+                Data = response
+            };
+        }
 
         /// <inheritdoc />
         public object NewTest(string project, TestCaseModel testCase)
@@ -83,44 +126,119 @@ namespace Mcp.Xray.Domain.Repositories
 
             // Extract the created issue key and id from the validated Jira response.
             // These are stored as JsonElement values and converted to strings only when needed.
-            var key = jiraResponse.GetProperty("key");
-            var id = jiraResponse.GetProperty("id");
+            var key = jiraResponse.GetProperty("key").GetString();
+            var id = jiraResponse.GetProperty("id").GetString();
 
             // Build a direct browser link to the newly created Jira issue.
-            var link = $"{jiraAuthentication.Collection}/browse/{key.GetString()}";
+            var link = $"{jiraAuthentication.Collection}/browse/{key}";
 
             // Create each Xray test step in sequence to preserve order and ensure deterministic indexing.
-            for (int i = 0; i < testCase.Steps.Length; i++)
-            {
-                var step = testCase.Steps[i];
-
-                // Extract the step action and serialize expected results into a newline-delimited string.
-                // This keeps the Xray step payload human-readable in the Xray UI.
-                var action = step.Action;
-                var result = string.Join('\n', step.ExpectedResults);
-
-                // Define a domain-specific exception for step creation failures.
-                // The message captures the test key and step index to simplify troubleshooting.
-                var stepException = new XrayTestStepNotCreatedException(
-                    message: $"Xray test step was not created successfully for test {key.GetString()} at index {i}."
-                );
-
-                // Attempt to create the Xray step with retry semantics to handle transient integration failures.
-                InvokeRepeatableAction(
-                    exception: stepException,
-                    func: () =>
-                    {
-                        return _xpandClient.NewTestStep(
-                            test: (id.GetString(), key.GetString()),
-                            action,
-                            result,
-                            index: i);
-                    }
-                );
-            }
+            NewTestSteps(_xpandClient, id, key, testCase);
 
             // Return a minimal consumer-friendly representation of the created test.
             // This avoids leaking the full Jira response while still providing key identifiers.
+            return new
+            {
+                Id = id,
+                Key = key,
+                Link = link
+            };
+        }
+
+        /// <inheritdoc />
+        public object NewTestRepositoryFolder(string idOrKey, string name, string path)
+        {
+            // Resolve the identifier of the parent folder based on the provided repository path.
+            // This determines where the new folder will be created in the repository hierarchy.
+            var parentId = _xpandClient.ResolveFolderPath(idOrKey, path);
+
+            // Invoke the internal Xray endpoint to create the repository folder
+            // under the resolved parent folder.
+            var response = _xpandClient.NewTestRepositoryFolder(idOrKey, name, parentId);
+
+            // Construct the resulting repository path for the newly created folder.
+            // This path is returned for consumer visibility and confirmation.
+            var outputPath = string.IsNullOrEmpty(path)
+                ? $"/{name}"
+                : $"/{path}/{name}";
+
+            // Validate that the response contains the expected result object
+            // and a folder identifier.
+            var isResult = response.TryGetProperty("result", out JsonElement resultOut);
+            var isId = resultOut.TryGetProperty("folderId", out JsonElement folderIdOut);
+
+            // If the response does not contain a valid folder identifier,
+            // treat the operation as a failure and raise a domain-specific exception.
+            if (!isResult || !isId)
+            {
+                throw new XrayTestRepositoryFolderNotCreatedException(
+                    message: $"Xray test repository folder was not created successfully at path {outputPath}."
+                );
+            }
+
+            // TODO: Add links when supported by Xpand API or composed manually.
+            // Return a minimal consumer-friendly representation of the created folder.
+            return new
+            {
+                Id = folderIdOut.GetString(),
+                Path = outputPath
+            };
+        }
+
+        /// <inheritdoc />
+        public string ResolveFolderPath(string idOrKey, string path)
+        {
+            return _xpandClient.ResolveFolderPath(idOrKey, path);
+
+        }
+
+        /// <inheritdoc />
+        public object UpdateTest(string key, TestCaseModel testCase)
+        {
+            // Retrieve the existing Xray test case using its Jira issue key.
+            // The response is expected to include both the internal test identifier
+            // and the currently defined test steps.
+            var test = _xpandClient.GetTestCase(idOrKey: key);
+
+            // Extract the internal test identifier required for step-level operations.
+            var id = test.GetProperty("id").GetString();
+
+            // Enumerate the existing test steps so they can be removed
+            // before recreating the updated step set.
+            var steps = test.GetProperty("steps").EnumerateArray();
+
+            // Configure parallel execution behavior based on the configured bucket size.
+            // A bucket size of zero forces sequential execution to ensure safe, deterministic behavior.
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = AppSettings.JiraOptions.BucketSize == 0
+                    ? 1
+                    : AppSettings.JiraOptions.BucketSize
+            };
+
+            // Remove all existing Xray test steps using parallel execution.
+            // Each step is removed independently, allowing faster cleanup while
+            // respecting the configured concurrency limits.
+            Parallel.ForEach(steps, parallelOptions, step =>
+            {
+                // Extract the unique identifier of the test step.
+                // This identifier is required to remove the step from Xray.
+                var stepId = step.GetProperty("id").GetString();
+
+                // Remove the test step from the Xray test case.
+                // Failures here will surface according to the caller’s error-handling strategy.
+                _xpandClient.RemoveTestStep((id, key), stepId);
+            });
+
+            // Build a direct browser link to the Jira issue representing the test.
+            var link = $"{jiraAuthentication.Collection}/browse/{key}";
+
+            // Recreate the test steps using the updated test case definition.
+            // Step creation follows the configured concurrency and retry semantics.
+            NewTestSteps(_xpandClient, id, key, testCase);
+
+            // Return a minimal consumer-friendly representation of the updated test.
+            // This avoids exposing raw Xray or Jira payloads while preserving key identifiers.
             return new
             {
                 Id = id,
@@ -222,6 +340,56 @@ namespace Mcp.Xray.Domain.Repositories
 
             // Return the fully constructed Jira issue creation request payload.
             return baseRequest;
+        }
+
+        // Creates all Xray test steps for a given test case using parallel execution,
+        // respecting the configured concurrency limits.
+        private static void NewTestSteps(
+            XpandClient xpandClient,
+            string id,
+            string key,
+            TestCaseModel testCase)
+        {
+            // Configure parallel execution behavior based on application settings.
+            // A bucket size of zero forces sequential execution to preserve determinism.
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = AppSettings.JiraOptions.BucketSize == 0
+                    ? 1
+                    : AppSettings.JiraOptions.BucketSize
+            };
+
+            // Create each test step using parallel execution while preserving the original index.
+            // The index is explicitly passed to Xray to maintain correct step ordering.
+            Parallel.For(0, testCase.Steps.Length, parallelOptions, i =>
+            {
+                var step = testCase.Steps[i];
+
+                // Extract the step action and serialize expected results into a newline-delimited string.
+                // This ensures the step remains readable and consistent in the Xray UI.
+                var action = step.Action;
+                var result = string.Join('\n', step.ExpectedResults);
+
+                // Define a domain-specific exception for failures during step creation.
+                // The message includes the test key and step index to simplify diagnostics.
+                var stepException = new XrayTestStepNotCreatedException(
+                    message: $"Xray test step was not created successfully for test {key} at index {i}."
+                );
+
+                // Attempt to create the Xray test step using retry semantics.
+                // Transient integration failures are retried before the exception is propagated.
+                InvokeRepeatableAction(
+                    exception: stepException,
+                    func: () =>
+                    {
+                        return xpandClient.NewTestStep(
+                            test: (id, key),
+                            action,
+                            result,
+                            index: i);
+                    }
+                );
+            });
         }
 
         /// <summary>
