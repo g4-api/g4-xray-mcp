@@ -1,4 +1,9 @@
 <Solution>
+  <Folder Name="/.github/">
+    <File Path="../.github/workflows/release-pipline.yml" />
+    <File Path=".github.env" />
+    <File Path=".mcp.json" />
+  </Folder>
   <Project Path="Mcp.Xray.Cli/Mcp.Xray.Cli.csproj" Id="4e1b17bf-20b8-4e21-8f07-a61d2a6706d1" />
   <Project Path="Mcp.Xray.Domain/Mcp.Xray.Domain.csproj" Id="89fd755a-e1c8-4307-9196-2e66b6bbf037" />
   <Project Path="Mcp.Xray.Settings/Mcp.Xray.Settings.csproj" Id="bb81b984-dfa8-45b5-9655-e6fc6bf829e7" />
