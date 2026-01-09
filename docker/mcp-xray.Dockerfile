@@ -1,29 +1,38 @@
-# See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
-
-# This stage is used when running from VS in fast mode (Default for Debug configuration)
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
-USER $APP_UID
-WORKDIR /app
-EXPOSE 8080
-
-
-# This stage is used to build the service project
+# Use the official .NET 10 SDK image as the build environment
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+
+# Set the build configuration (default is Release)
 ARG BUILD_CONFIGURATION=Release
+
+# Set the working directory inside the container
 WORKDIR /src
-COPY ["Mcp.Xray/Mcp.Xray.csproj", "Mcp.Xray/"]
-RUN dotnet restore "./Mcp.Xray/Mcp.Xray.csproj"
+
+# Copy the source files from src/ to /src
+COPY ["src/", "/src"]
+
+# Restore dependencies
+RUN dotnet restore "Mcp.Xray/Mcp.Xray.csproj"
+
+# Copy the remaining source code
 COPY . .
-WORKDIR "/src/Mcp.Xray"
-RUN dotnet build "./Mcp.Xray.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
-# This stage is used to publish the service project to be copied to the final stage
-FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./Mcp.Xray.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+# Build the project
+RUN dotnet build "Mcp.Xray/Mcp.Xray.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
-# This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
-FROM base AS final
+# Publish the project
+RUN dotnet publish "Mcp.Xray/Mcp.Xray.csproj" -c $BUILD_CONFIGURATION -o /app/publish
+
+# Use the official .NET 10 ASP.NET runtime as the runtime environment
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+
+# Set the working directory for the runtime
 WORKDIR /app
-COPY --from=publish /app/publish .
+
+# Copy the published output from the build stage
+COPY --from=build /app/publish .
+
+# Expose port 9988 (adjust if needed)
+EXPOSE 9988
+
+# Set the entry point for the container
 ENTRYPOINT ["dotnet", "Mcp.Xray.dll"]

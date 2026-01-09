@@ -1,4 +1,15 @@
 <Solution>
+  <Folder Name="/.docker/">
+    <File Path="../.dockerignore" />
+    <File Path="../docker/mcp-xray.Dockerfile" />
+  </Folder>
+  <Folder Name="/.git/">
+    <File Path="../.github/ISSUE_TEMPLATE/bug.md" />
+    <File Path="../.github/ISSUE_TEMPLATE/task.md" />
+    <File Path="../.gitignore" />
+    <File Path="../LICENSE" />
+    <File Path="../README.md" />
+  </Folder>
   <Folder Name="/.github/">
     <File Path="../.github/workflows/release-pipline.yml" />
     <File Path=".github.env" />

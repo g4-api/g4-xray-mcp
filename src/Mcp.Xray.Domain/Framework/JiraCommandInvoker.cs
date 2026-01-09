@@ -28,9 +28,6 @@ namespace Mcp.Xray.Domain.Framework
     /// <param name="authentication">The authentication model that defines the Jira credentials and project context.</param>
     public class JiraCommandInvoker(JiraAuthenticationModel authentication)
     {
-        private static long _lastUsed;
-        private static string _lastToken;
-
         #region *** Fields       ***
         // The Jira REST API version used for constructing default API routes.
         private static readonly string _apiVersion = AppSettings.JiraOptions.ApiVersion;
@@ -193,25 +190,6 @@ namespace Mcp.Xray.Domain.Framework
             // Converts the response message to a generic response format.
             return response.NewGenericResponse();
         }
-        
-        private static void TestToken(string token)
-        {
-            var handler = new JwtSecurityTokenHandler();
-            //lock(_lastToken)
-            //{
-            //    if (_lastToken == token && (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - _lastUsed) < 60)
-            //    {
-            //        return;
-            //    }
-            //    var jwtToken = handler.ReadJwtToken(token);
-            //    var exp = jwtToken.Claims.First(i => i.Type == "exp").Value;
-            //    var expSeconds = long.Parse(exp);
-            //    var expDate = DateTimeOffset.FromUnixTimeSeconds(expSeconds);
-            //    Console.WriteLine($"Token expires at {expDate:u}");
-            //    _lastUsed = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            //    _lastToken = token;
-            //}
-        }
         #endregion
 
         #region *** Nested Types ***
@@ -339,6 +317,7 @@ namespace Mcp.Xray.Domain.Framework
             }
 
             // TODO: Handle 429 Too Many Requests responses with retry-after logic.
+            // TODO: cache token and check expiration - if about to expire, issue new one
             // Enriches the given HTTP request message with Xray-specific authentication and routing
             // based on the provided command headers. When a valid X-acpt header value is present,
             // the method obtains an Xray JWT token and updates the request accordingly.
@@ -366,7 +345,6 @@ namespace Mcp.Xray.Domain.Framework
                     return requestMessage;
                 }
 
-                // TODO: cache token and check expiration - if about to expire, issue new one
                 // Resolves the Xray JWT token using the header value as the issue key context.
                 var token = authentication.GetJwt(issueKey: command.Headers[Xacpt]).Result;
 
