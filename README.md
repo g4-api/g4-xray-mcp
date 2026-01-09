@@ -1,6 +1,7 @@
 # G4 Jira & Xray MCP Service
 
-![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=.net&logoColor=white)
+![.NET](https://img.shields.io/badge/.NET-10-512BD4?logo=.net&logoColor=white)  
+[![Build, Test & Release G4™ Jira-XRay MCP](https://github.com/g4-api/g4-xray-mcp/actions/workflows/release-pipline.yml/badge.svg)](https://github.com/g4-api/g4-xray-mcp/actions/workflows/release-pipline.yml)
 
 A cross-platform **ASP.NET Core MCP service** that integrates with **Jira** (Cloud & On-Prem) and **Xray** (Cloud & On-Prem via Raven API).  
 It exposes an MCP-compatible **HTTP endpoint** for test-management automation.
