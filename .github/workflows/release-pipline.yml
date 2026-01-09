@@ -1,0 +1,159 @@
+name: Build, Test & Release G4™ Jira-XRay MCP
+
+# Define permissions for the workflow
+permissions:
+  contents: write
+  checks: write
+  pull-requests: write
+  statuses: write
+
+# Trigger the workflow on push to the main branch
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'README.md'
+  workflow_dispatch:
+
+# Set environment variables
+env:
+  artifactPublishDirectory: ${{ github.workspace }}/artifact_publish
+  artifactStagingDirectory: ${{ github.workspace }}/artifact_staging
+  artifactType: 'Production'
+  binariesDirectory: ${{ github.workspace }}/binaries
+  buildConfiguration: 'Release'
+  buildPlatform: 'any cpu'
+  dockerFilePath: './docker/mcp-xray.Dockerfile'
+  dockerImageName: 'g4api/g4-jira-xray-mcp'
+
+jobs:
+  new-version:
+    name: New Version
+    runs-on: ubuntu-latest
+    outputs:
+      buildVersion: ${{ steps.parse-version.outputs.version }}
+      validVersion: ${{ steps.validate-version.outputs.valid }}
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+    
+    - name: Parse Build Version for GitHub Tag
+      id: parse-version
+      shell: pwsh
+      run: echo "version=$(Get-Date -UFormat '%Y.%m.%d').${{ github.run_number }}" >> $env:GITHUB_OUTPUT
+
+    - name: Validate Version ${{ steps.parse-version.outputs.version }}
+      id: validate-version
+      shell: pwsh
+      run: |
+        $version = "${{ steps.parse-version.outputs.version }}"
+        echo "valid=$($version -match '^\d+(\.\d+){3}$')" >> $env:GITHUB_OUTPUT
+
+  publish-hub-docker:
+    name: Publish Hub Docker Images
+    runs-on: ubuntu-latest
+    if: ${{ needs.new-version.result == 'success' && needs.new-version.outputs.validVersion == 'True' }}
+    needs:
+      - new-version
+
+    env:
+      buildVersion: ${{ needs.new-version.outputs.buildVersion }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        run:  echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Build Docker Image
+        run: docker build -f ${{ env.dockerFilePath }} -t ${{ env.dockerImageName }}:latest -t ${{ env.dockerImageName }}:${{ env.buildVersion }} .
+
+      - name: Push Docker Image 'latest'
+        run: docker push ${{ env.dockerImageName }}:latest
+
+      - name: Push Docker Image '${{ env.buildVersion }}'
+        run: docker push ${{ env.dockerImageName }}:${{ env.buildVersion }}
+
+  publish-hub-standalone:
+    name: Publish Standalone Hub Service
+    runs-on: ubuntu-latest
+    if: ${{ needs.new-version.result == 'success' && needs.new-version.outputs.validVersion == 'True' }}
+    needs:
+      - new-version
+
+    env:
+      buildVersion: ${{ needs.new-version.outputs.buildVersion }}
+
+    steps:
+      - name: Checkout Workflow Repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET Core SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10
+
+      - name: Set Version v${{ env.buildVersion }}
+        shell: pwsh
+        run: |
+            $tempVersion = '"0000.00.00.0000"'
+            $version     = '"${{ env.buildVersion }}"'
+
+            Get-ChildItem -Path $searchDirectory -Filter "Program.cs" -Recurse | ForEach-Object {
+                $filePath = $_.FullName
+                $content = Get-Content -Path $filePath -Raw
+                $newContent = $content -replace [regex]::Escape($tempVersion), $version
+                Set-Content -Path $filePath -Value $newContent
+            }
+
+      - name: Publish
+        shell: pwsh
+        run: dotnet publish ./src/Mcp.Xray/Mcp.Xray.csproj -o ${{ env.artifactPublishDirectory }} -c Release
+  
+      - name: Create Build Artifact
+        shell: pwsh
+        run: |
+          New-Item -Path "${{ env.artifactStagingDirectory }}" -ItemType Directory
+          Compress-Archive `
+              -Path ${{ env.artifactPublishDirectory }}/* `
+              -DestinationPath ${{ env.artifactStagingDirectory }}/g4-hub.v${{ env.buildVersion }}-win-linux-osx-x64.zip
+  
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: g4-hub
+          path: ${{ env.artifactStagingDirectory }}/*.zip
+  
+  new-release:
+    name: New GitHub Release Version ${{ needs.new-version.outputs.buildVersion }}
+    runs-on: ubuntu-latest
+    if: ${{ needs.new-version.result == 'success' && needs.new-version.outputs.validVersion == 'True' }}
+    needs:
+      - new-version
+      - publish-hub-standalone
+
+    env:
+      buildVersion: ${{ needs.new-version.outputs.buildVersion }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Download Build Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: g4-hub
+
+    - name: Create GitHub Release & Tag v${{ env.buildVersion }}
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ./*.zip
+        tag_name: v${{ env.buildVersion }}
+        name: ${{ env.artifactType }} v${{ env.buildVersion }}
+        generate_release_notes: true
+
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
