@@ -1,40 +1,25 @@
 <!-- Summary -->
 
-
-
-\### Pre-conditions
+### Pre-conditions
 
 <!-- Optional -->
 
+### Steps to Reproduce
 
+1.
 
-\### Steps to Reproduce
+2.
 
-1\.
+3.
 
-2\.
+### Expected Result
 
-3\.
+### Actual Result
 
-
-
-\### Expected Result
-
-
-
-\### Actual Result
-
-
-
-\### Environment
+### Environment
 
 <!-- Optional -->
 
-
-
-\### Notes
+### Notes
 
 <!-- Optional -->
-
-
-

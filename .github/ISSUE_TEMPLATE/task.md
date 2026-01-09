@@ -1,30 +1,18 @@
 <!-- What needs to be done -->
 
+### Acceptance Criteria
 
+- [ ]
+- [ ] 
 
-\### Acceptance Criteria
-
-\- \[ ] 
-
-\- \[ ] 
-
-
-
-\### References
+### References
 
 <!-- Optional -->
 
-
-
-\### Notes
+### Notes
 
 <!-- Optional -->
 
-
-
-\### Dependencies
+### Dependencies
 
 <!-- Optional -->
-
-
-
