@@ -24,6 +24,7 @@ namespace Mcp.Xray.Domain.Repositories
     /// </remarks>
     public class XrayXpandRepository(JiraAuthenticationModel jiraAuthentication) : IXrayRepository
     {
+        #region *** Fields       ***
         // Jira client used to create and manage Jira issues related to Xray tests.
         // This client is initialized using the provided authentication model
         // and is reused internally by the repository for all Jira operations.
@@ -33,7 +34,9 @@ namespace Mcp.Xray.Domain.Repositories
         // This client handles communication with the Xpand API layer and is
         // responsible for extending Jira test issues with Xray metadata.
         private readonly XpandClient _xpandClient = new(jiraAuthentication);
+        #endregion
 
+        #region *** Methods      ***
         // Moves Jira issues selected by a JQL query into a folder in the Xray Test Repository.
         public object AddTestsToFolder(string idOrKey, string path, string jql)
         {
@@ -391,7 +394,9 @@ namespace Mcp.Xray.Domain.Repositories
                 );
             });
         }
+        #endregion
 
+        #region *** Nested Types ***
         /// <summary>
         /// Represents a normalized set of options used to construct
         /// a Jira issue creation request.
@@ -431,5 +436,6 @@ namespace Mcp.Xray.Domain.Repositories
             /// </summary>
             public string Summary { get; set; }
         }
+        #endregion
     }
 }

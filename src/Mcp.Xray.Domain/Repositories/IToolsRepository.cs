@@ -13,6 +13,7 @@ namespace Mcp.Xray.Domain.Repositories
     /// </summary>
     public interface IToolsRepository
     {
+        #region *** Properties ***
         /// <summary>
         /// Ges the JSON serialization options used for MCP operations.
         /// </summary>
@@ -56,7 +57,9 @@ namespace Mcp.Xray.Domain.Repositories
                 return options;
             }
         }
+        #endregion
 
+        #region *** Methods    ***
         /// <summary>
         /// Retrieves a collection of available tools, optionally filtered by intent and/or type(s).  
         /// If neither filter is applied, all tools are returned.
@@ -83,5 +86,6 @@ namespace Mcp.Xray.Domain.Repositories
         /// <param name="id">The request ID to correlate the response with the request.</param>
         /// <returns>An object containing the result of the tool execution.</returns>
         ToolOutputSchema InvokeTool(JsonElement parameters, object id);
+        #endregion
     }
 }

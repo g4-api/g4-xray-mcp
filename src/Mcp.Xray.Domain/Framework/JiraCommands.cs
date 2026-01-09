@@ -216,7 +216,7 @@ namespace Mcp.Xray.Domain.Framework
             // The text placeholders are replaced with the actual project and issue keys.
             var data = Assembly
                 .GetExecutingAssembly()
-                .ReadEmbeddedResource("get_token.txt")
+                .ReadEmbeddedResource("get-token.txt")
                 .Replace("[project-key]", project)
                 .Replace("[issue-key]", issue);
 

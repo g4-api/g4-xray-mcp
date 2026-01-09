@@ -266,6 +266,11 @@ namespace Mcp.Xray.Domain.Repositories
             public string ToolName { get; set; }
         }
 
+        /// <summary>
+        /// Encapsulates the static system tools available for invocation.
+        /// This class contains methods that implement various Xray-related operations,
+        /// and called via reflection based on tool names.
+        /// </summary>
         private static class Tools
         {
             // Adds Xray test cases selected by a JQL query to a specified folder

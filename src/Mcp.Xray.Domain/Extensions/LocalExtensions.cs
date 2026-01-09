@@ -305,7 +305,7 @@ namespace Mcp.Xray.Domain.Extensions
                     // Read JSON request template from embedded resource.
                     var template = Assembly
                         .GetExecutingAssembly()
-                        .ReadEmbeddedResource("get_interactive_token.txt");
+                        .ReadEmbeddedResource("get-interactive-token.txt");
 
                     // Cannot continue without a valid template.
                     if (string.IsNullOrEmpty(template))

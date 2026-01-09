@@ -6,9 +6,6 @@ namespace Mcp.Xray.Domain.Models
     /// Represents a generic Model Context Protocol (MCP) request using the JSON-RPC 2.0 format.
     /// This model is used when communicating with MCP servers and tools, encapsulating the request
     /// identifier, method name, and a flexible parameters payload.
-    ///
-    /// The model supports both System.Text.Json and Newtonsoft.Json attributes to ensure compatibility
-    /// across different serialization mechanisms when producing or consuming MCP-compliant messages.
     /// </summary>
     public class McpRequestModel
     {
@@ -33,7 +30,6 @@ namespace Mcp.Xray.Domain.Models
 
         /// <summary>
         /// Gets or sets the parameters for the invoked MCP method.
-        /// 
         /// Stored as <see cref="JsonElement"/> to support dynamic and schema-less payloads.
         /// </summary>
         public JsonElement Params { get; set; }

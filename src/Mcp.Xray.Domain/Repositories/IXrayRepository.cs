@@ -2,6 +2,10 @@
 
 namespace Mcp.Xray.Domain.Repositories
 {
+    /// <summary>
+    /// Defines methods for interacting with the Xray Test Repository in Jira
+    /// including test case creation, folder management, and test organization.
+    /// </summary>
     public interface IXrayRepository
     {
         /// <summary>
