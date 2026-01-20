@@ -38,8 +38,7 @@ namespace Mcp.Xray.Domain.Models
         /// Gets or sets the custom field values associated with this test case,
         /// typically used for external system mapping such as Jira or Xray.
         /// </summary>
-        public ConcurrentDictionary<string, string> CustomFields { get; set; } =
-            new ConcurrentDictionary<string, string>(_comparer);
+        public CustomFieldModel[] CustomFields { get; set; } = [];
 
         /// <summary>
         /// Gets or sets the structured input data used by the test case,
@@ -160,6 +159,22 @@ namespace Mcp.Xray.Domain.Models
         #endregion
 
         #region *** Nested Types ***
+        /// <summary>
+        /// Represents a custom field with a name and associated value.
+        /// </summary>
+        public class CustomFieldModel
+        {
+            /// <summary>
+            /// Gets or sets the name of the custom field.
+            /// </summary>
+            public string Name { get; set; } = string.Empty;
+         
+            /// <summary>
+            /// Gets or sets the value assigned to the custom field.
+            /// </summary>
+            public object Value { get; set; }
+        }
+
         /// <summary>
         /// Represents a single step within a test case, describing the action to be performed,
         /// the conditions that define a successful outcome, and the actual execution result

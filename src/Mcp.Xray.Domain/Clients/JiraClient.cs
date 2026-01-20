@@ -238,18 +238,23 @@ namespace Mcp.Xray.Domain.Clients
             // Retrieve or populate the project's metadata cache.
             if (!_projectMetaCache.TryGetValue(project, out JObject projectMeta))
             {
-                projectMeta = JiraCommands
+                // Load the project creation metadata from Jira.
+                var projectJson = JiraCommands
                     .GetCreateMeta(project)
                     .Send(Authentication)
-                    .ConvertToJsonObject();
-                _projectMetaCache[project] = projectMeta;
+                    .ConvertToJsonObject()["projects"]
+                    .FirstOrDefault(i => $"{i["key"]}".Equals(project, StringComparison.OrdinalIgnoreCase));
+
+                // Cache the project metadata for future lookups.
+                _projectMetaCache[project] = JObject.Parse($"{projectJson}");
             }
 
             // Locate the "custom" field entry that matches the provided schema.
             // This searches recursively and performs a case-insensitive comparison.
-            var customNode = projectMeta
-                .SelectTokens("..custom")
-                .FirstOrDefault(i => $"{i}".Equals(schema, StringComparison.OrdinalIgnoreCase));
+            var customNode = _projectMetaCache[project]
+                .SelectTokens(path: $"..fields..[?(@.name == '{schema}')]")
+                .FirstOrDefault()
+                .ConvertToJObject();
 
             // If no matching custom field definition exists, return empty.
             if (customNode == null)
@@ -259,7 +264,7 @@ namespace Mcp.Xray.Domain.Clients
 
             // The "custom" node is usually nested.
             // We navigate back to the parent object to extract "customId".
-            var customId = customNode.Parent?.Parent?["customId"];
+            var customId = customNode["schema"]["customId"];
 
             // Without a customId, a field cannot be constructed.
             if (customId == null)
@@ -943,18 +948,13 @@ namespace Mcp.Xray.Domain.Clients
             var isCode = response.TryGetProperty("code", out var codeOut);
             var code = isCode ? codeOut.GetInt16() : 0;
 
-            var isGenericResponse = code != 0 && code < 400;
+            var isErroCode = code != 0 && code >= 400;
             var isFail = $"{response.GetProperty("id")}" == "-1";
 
-            // If Jira reports a valid code but an internal failure, return only the key.
-            if (isGenericResponse && isFail)
-            {
-                return JsonElement.Parse(@"{""key"":""" + idOrKey + @"""}");
-            }
             // If there is a failure and no valid code, return an empty object.
-            else if (!isCode && isFail)
+            if (isErroCode || isFail)
             {
-                return JsonElement.Parse("{}");
+                return response;
             }
 
             // Extract the issue key from the response.

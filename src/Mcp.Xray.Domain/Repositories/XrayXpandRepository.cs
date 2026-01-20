@@ -6,6 +6,7 @@ using Mcp.Xray.Settings;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -104,39 +105,47 @@ namespace Mcp.Xray.Domain.Repositories
 
             // Attempt to create the Jira issue with retry semantics to handle transient Jira failures.
             // The invocation validates that the response contains both id and key before accepting success.
-            var jiraResponse = (JsonElement)InvokeRepeatableAction(
+            var jiraResponse = (JsonElement)InvokeRepeatableRequest(
                 exception: issueException,
                 func: () =>
                 {
                     // Create the Jira issue and capture the raw JSON response.
                     var response = _jiraClient.NewIssue(testIssue);
 
-                    // Attempt to extract both the issue id and key from the Jira response.
-                    // These values are required to reference the created issue and build links.
-                    var hasId = response.TryGetProperty("id", out JsonElement id);
-                    var hasKey = response.TryGetProperty("key", out JsonElement key);
+                    //// Attempt to extract both the issue id and key from the Jira response.
+                    //// These values are required to reference the created issue and build links.
+                    //var hasId = response.TryGetProperty("id", out JsonElement id);
+                    //var hasKey = response.TryGetProperty("key", out JsonElement key);
 
-                    // Treat a missing id or key as a failure since subsequent operations depend on both.
-                    if (!hasId || !hasKey)
-                    {
-                        throw issueException;
-                    }
+                    //// Treat a missing id or key as a failure since subsequent operations depend on both.
+                    //if (!hasId || !hasKey)
+                    //{
+                    //    throw issueException;
+                    //}
 
                     // Return the validated Jira response to the caller for further processing.
                     return response;
                 }
             );
 
+            // Validate that the Jira response contains the expected issue key property.
+            var isKey = jiraResponse.TryGetProperty("key", out JsonElement key);
+
+            // If the issue key is missing, treat the operation as a failure and return the raw response.
+            if (!isKey)
+            {
+                return jiraResponse;
+            }
+
             // Extract the created issue key and id from the validated Jira response.
             // These are stored as JsonElement values and converted to strings only when needed.
-            var key = jiraResponse.GetProperty("key").GetString();
             var id = jiraResponse.GetProperty("id").GetString();
 
             // Build a direct browser link to the newly created Jira issue.
             var link = $"{jiraAuthentication.Collection}/browse/{key}";
 
             // Create each Xray test step in sequence to preserve order and ensure deterministic indexing.
-            NewTestSteps(_xpandClient, id, key, testCase);
+            NewTestSteps(_xpandClient, id, key.GetString(), testCase);
 
             // Return a minimal consumer-friendly representation of the created test.
             // This avoids leaking the full Jira response while still providing key identifiers.
@@ -251,11 +260,12 @@ namespace Mcp.Xray.Domain.Repositories
         }
 
         // Executes the provided action repeatedly until it succeeds or the retry limit is reached.
-        private static object InvokeRepeatableAction(Exception exception, Func<object> func)
+        private static object InvokeRepeatableRequest(Exception exception, Func<object> func)
         {
             // Retrieve retry configuration from application settings.
             var maxAttempts = AppSettings.JiraOptions.RetryOptions.MaxAttempts;
             var delayMilliseconds = AppSettings.JiraOptions.RetryOptions.DelayMilliseconds;
+            object response = null;
 
             // Attempt to execute the action up to the configured retry count.
             for (int i = 0; i < maxAttempts; i++)
@@ -263,21 +273,30 @@ namespace Mcp.Xray.Domain.Repositories
                 try
                 {
                     // Execute the action and immediately return the result on success.
-                    return func();
+                    response = func();
+
+                    var jsonResponse = (JsonElement)response;
+                    var isCode = jsonResponse.TryGetProperty("code", out JsonElement code);
+                    
+                    if (!isCode || code.GetInt16() < 400)
+                    {
+                        return response;
+                    }
+
+                    Thread.Sleep(delayMilliseconds);
                 }
                 catch
                 {
                     // Swallow the exception and continue to the next retry attempt.
                     // The final exception will be thrown only after all retries are exhausted.
+                    // Wait for the configured delay before the next retry attempt.
+                    Thread.Sleep(delayMilliseconds);
                 }
-
-                // Wait for the configured delay before the next retry attempt.
-                Thread.Sleep(delayMilliseconds);
             }
 
             // All retry attempts have failed, so propagate the provided exception
             // to signal an unrecoverable failure to the caller.
-            throw exception;
+            return response;
         }
 
         // Builds a Jira issue creation request payload using normalized issue creation options
@@ -319,7 +338,7 @@ namespace Mcp.Xray.Domain.Repositories
 
             // If custom field resolution is disabled, or no custom fields are provided,
             // return the base request without modification.
-            if (!resolveCustomFields || options.CustomFields is null || options.CustomFields.Count == 0)
+            if (!resolveCustomFields || options.CustomFields is null || options.CustomFields.Length == 0)
             {
                 return baseRequest;
             }
@@ -329,7 +348,7 @@ namespace Mcp.Xray.Domain.Repositories
             foreach (var item in options.CustomFields)
             {
                 // Extract the schema identifier for the custom field.
-                var schema = item.Key;
+                var schema = item.Name;
 
                 // Resolve the Jira field name for the given schema within the target project.
                 var resolvedField = jiraClient.GetCustomField(options.Project, schema);
@@ -381,7 +400,7 @@ namespace Mcp.Xray.Domain.Repositories
 
                 // Attempt to create the Xray test step using retry semantics.
                 // Transient integration failures are retried before the exception is propagated.
-                InvokeRepeatableAction(
+                InvokeRepeatableRequest(
                     exception: stepException,
                     func: () =>
                     {
@@ -414,7 +433,7 @@ namespace Mcp.Xray.Domain.Repositories
             /// <summary>
             /// Gets or sets the custom field values associated with the issue.
             /// </summary>
-            public IDictionary<string, string> CustomFields { get; set; }
+            public TestCaseModel.CustomFieldModel[] CustomFields { get; set; }
 
             /// <summary>
             /// Gets or sets the textual description of the issue.

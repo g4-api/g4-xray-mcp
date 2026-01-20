@@ -11,11 +11,23 @@
 				"type": [ "array" ]
 			},
 			"customFields": {
-				"additionalProperties": {
-					"type": "string"
+				"description": "Optional Xray custom field values. Each entry defines a single custom field by its name and the value to assign. Use this when you need to populate Jira/Xray custom fields during creation.",
+				"items": {
+					"additionalProperties": false,
+					"properties": {
+						"name": {
+							"description": "The custom field name or key as defined in Jira/Xray (for example, 'Test Level' or 'cf_12345').",
+							"type": [ "string" ]
+						},
+						"value": {
+							"description": "The value to assign to the custom field.",
+							"type": [ "string" ]
+						}
+					},
+					"required": [ "name", "value" ],
+					"type": "object"
 				},
-				"description": "Optional custom field values mapped by field key.",
-				"type": [ "object" ]
+				"type": [ "array" ]
 			},
 			"priority": {
 				"description": "Optional priority level (string-coded).",

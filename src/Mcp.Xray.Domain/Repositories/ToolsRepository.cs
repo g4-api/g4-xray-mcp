@@ -238,6 +238,7 @@ namespace Mcp.Xray.Domain.Repositories
             /// <param name="parameters">The JSON parameters containing an <c>"arguments"</c> object with tool-specific settings.</param>
             public InvokeOptions(IXrayRepository xray, JsonElement parameters)
             {
+                // Store the Xray repository reference for use by invoked tools.
                 Xray = xray;
 
                 // Extract the "arguments" object from the JSON parameters.
@@ -301,6 +302,16 @@ namespace Mcp.Xray.Domain.Repositories
                     idOrKey: project,
                     path: path,
                     jql: jql);
+            }
+
+            [SystemTool("get_xray_tool_metadata")]
+            public static object GetXrayTool(InvokeOptions options)
+            {
+                var toolName = options.Arguments.GetProperty("toolName").GetString();
+
+                return s_tools.TryGetValue(key: toolName, out McpToolModel tool)
+                    ? tool
+                    : null;
             }
 
             // Creates a new Xray test case in Jira based on the provided invocation options.

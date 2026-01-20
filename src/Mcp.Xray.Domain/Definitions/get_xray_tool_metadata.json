@@ -1,0 +1,39 @@
+{
+	"description": "Retrieve the MCP tool definition metadata for a given Xray-related tool. Useful for introspection, validation, and agent planning before tool invocation.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"toolName": {
+				"description": "The exact name of the Xray MCP tool to retrieve metadata for (for example, new_xray_test, add_tests_to_folder).",
+				"type": [ "string" ]
+			}
+		},
+		"required": [ "toolName" ],
+		"type": "object"
+	},
+	"name": "get_xray_tool_metadata",
+	"outputSchema": {
+		"additionalProperties": false,
+		"description": "The full MCP tool definition object, including name, description, inputSchema, and outputSchema.",
+		"properties": {
+			"description": {
+				"description": "Human-readable description of the tool purpose.",
+				"type": [ "string" ]
+			},
+			"inputSchema": {
+				"description": "Input schema describing the parameters accepted by the tool.",
+				"type": [ "object" ]
+			},
+			"name": {
+				"description": "Tool name.",
+				"type": [ "string" ]
+			},
+			"outputSchema": {
+				"description": "Output schema describing the structure of the tool response.",
+				"type": [ "object" ]
+			}
+		},
+		"required": [ "name", "description", "inputSchema", "outputSchema" ],
+		"type": "object"
+	}
+}

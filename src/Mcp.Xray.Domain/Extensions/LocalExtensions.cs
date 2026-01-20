@@ -4,6 +4,8 @@ using Mcp.Xray.Settings;
 
 using Microsoft.AspNetCore.Http;
 
+using Newtonsoft.Json.Linq;
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -438,6 +440,19 @@ namespace Mcp.Xray.Domain.Extensions
                     // fall back to the default value from the factory.
                     _ => defaultValue()
                 };
+            }
+        }
+
+        extension(JToken token)
+        {
+            /// <summary>
+            /// Converts the current JSON token into a <see cref="JObject"/>, allowing it
+            /// to be accessed and manipulated as a structured JSON object rather than
+            /// a raw or loosely typed token.
+            /// </summary>
+            public JObject ConvertToJObject()
+            {
+                return JObject.FromObject(token);
             }
         }
 
