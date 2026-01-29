@@ -21,6 +21,13 @@ namespace Mcp.Xray.Domain.Repositories
         object AddTestsToFolder(string idOrKey, string path, string jql);
 
         /// <summary>
+        /// Gets an existing Xray test case by its Jira issue identifier or key.
+        /// </summary>
+        /// <param name="idOrKey">The Jira issue identifier or key.</param>
+        /// <returns>An object representing the existing Xray test case.</returns>
+        object GetTest(string idOrKey);
+
+        /// <summary>
         /// Creates a new Xray test case in Jira and populates it with the provided test steps.
         /// </summary>
         /// <param name="project">The Jira project key under which the test case will be created.</param>

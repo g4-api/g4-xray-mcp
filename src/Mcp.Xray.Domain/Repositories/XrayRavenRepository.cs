@@ -22,6 +22,11 @@ namespace Mcp.Xray.Domain.Repositories
             throw new NotImplementedException();
         }
 
+        public object GetTest(string idOrKey)
+        {
+            throw new NotImplementedException();
+        }
+
         /// <inheritdoc />
         public object NewTest(string project, TestCaseModel testCase)
         {

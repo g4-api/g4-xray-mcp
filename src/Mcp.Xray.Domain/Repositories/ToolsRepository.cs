@@ -304,11 +304,20 @@ namespace Mcp.Xray.Domain.Repositories
                     jql: jql);
             }
 
+            // This system tool acts as a read-only query against the Xray API.
+            // It expects a valid Xray test issue key (for example: <c>PROJ-123</c>)
+            // and returns the full Test Case model as provided by Xray.
             [SystemTool("get_xray_test")]
             public static object GetXrayTest(InvokeOptions options)
             {
-                var key = options.Arguments.GetProperty("key").GetString();
+                // Extract the Xray issue key from the tool invocation arguments.
+                // Expected format example: "PROJ-123"
+                var key = options.Arguments
+                    .GetProperty("key")
+                    .GetString();
 
+                // Delegate the lookup to the Xray client.
+                // The API accepts either an ID or an issue key; here we pass the key.
                 return options.Xray.GetTest(idOrKey: key);
             }
 
