@@ -1,0 +1,194 @@
+{
+	"description": "Retrieve an existing Xray Cloud test case by its Jira issue key and return the full test case model (scenario, specifications, steps, setup/teardown, metadata, and custom fields).",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"key": {
+				"description": "The Jira/Xray test issue key to retrieve (e.g., PROJECT-123).",
+				"type": [
+					"string"
+				]
+			}
+		},
+		"required": [
+			"key"
+		],
+		"type": "object"
+	},
+	"name": "get_xray_test",
+	"outputSchema": {
+		"additionalProperties": false,
+		"description": "Full Xray test case model for the requested issue key.",
+		"properties": {
+			"categories": {
+				"description": "Tags or categories for classification.",
+				"items": {
+					"type": "string"
+				},
+				"type": [
+					"array"
+				]
+			},
+			"customFields": {
+				"additionalProperties": {
+					"type": "string"
+				},
+				"description": "Custom field values mapped by field key or name.",
+				"type": [
+					"object"
+				]
+			},
+			"id": {
+				"description": "Test internal identifier.",
+				"type": [
+					"string"
+				]
+			},
+			"key": {
+				"description": "Test key (e.g., PROJECT-123).",
+				"type": [
+					"string"
+				]
+			},
+			"link": {
+				"description": "Direct URL to the test in Jira/Xray (if available).",
+				"type": [
+					"string"
+				]
+			},
+			"priority": {
+				"description": "Priority level (string-coded).",
+				"type": [
+					"string"
+				]
+			},
+			"scenario": {
+				"description": "Human-readable test scenario or title.",
+				"type": [
+					"string"
+				]
+			},
+			"severity": {
+				"description": "Severity level (string-coded).",
+				"type": [
+					"string"
+				]
+			},
+			"steps": {
+				"description": "Main test steps with one or more expected results per step.",
+				"items": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"action": {
+							"description": "Step instruction or action to perform.",
+							"type": [
+								"string"
+							]
+						},
+						"expectedResults": {
+							"description": "Expected outcomes for this step.",
+							"type": [
+								"array"
+							],
+							"minItems": 1,
+							"items": {
+								"type": "string"
+							}
+						}
+					},
+					"required": [
+						"action",
+						"expectedResults"
+					]
+				},
+				"type": [
+					"array"
+				]
+			},
+			"testSetup": {
+				"description": "Setup steps executed before the main steps.",
+				"type": [
+					"array"
+				],
+				"items": {
+					"additionalProperties": false,
+					"properties": {
+						"action": {
+							"description": "Setup instruction or action.",
+							"type": [
+								"string"
+							]
+						},
+						"expectedResults": {
+							"description": "Expected outcomes for the setup step.",
+							"items": {
+								"type": "string"
+							},
+							"minItems": 1,
+							"type": [
+								"array"
+							]
+						}
+					},
+					"required": [
+						"action",
+						"expectedResults"
+					],
+					"type": "object"
+				}
+			},
+			"testSpecifications": {
+				"description": "Detailed test description or specification.",
+				"type": [
+					"string"
+				]
+			},
+			"testTeardown": {
+				"description": "Teardown steps executed after the main steps.",
+				"items": {
+					"additionalProperties": false,
+					"properties": {
+						"action": {
+							"description": "Teardown instruction or action.",
+							"type": [
+								"string"
+							]
+						},
+						"expectedResults": {
+							"description": "Expected outcomes for the teardown step.",
+							"items": {
+								"type": "string"
+							},
+							"minItems": 1,
+							"type": [
+								"array"
+							]
+						}
+					},
+					"required": [
+						"action",
+						"expectedResults"
+					],
+					"type": "object"
+				},
+				"type": [
+					"array"
+				]
+			},
+			"tolerance": {
+				"description": "Tolerance percentage for acceptance criteria.",
+				"type": [
+					"number"
+				]
+			}
+		},
+		"required": [
+			"id",
+			"key",
+			"scenario",
+			"steps"
+		],
+		"type": "object"
+	}
+}

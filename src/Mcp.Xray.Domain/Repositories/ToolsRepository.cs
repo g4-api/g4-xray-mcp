@@ -257,7 +257,7 @@ namespace Mcp.Xray.Domain.Repositories
             public JsonElement Arguments { get; set; }
 
             /// <summary>
-            /// 
+            /// Gets the Xray repository for performing Xray-related operations.
             /// </summary>
             public IXrayRepository Xray { get; }
 
@@ -302,6 +302,14 @@ namespace Mcp.Xray.Domain.Repositories
                     idOrKey: project,
                     path: path,
                     jql: jql);
+            }
+
+            [SystemTool("get_xray_test")]
+            public static object GetXrayTest(InvokeOptions options)
+            {
+                var key = options.Arguments.GetProperty("key").GetString();
+
+                return options.Xray.GetTest(idOrKey: key);
             }
 
             [SystemTool("get_xray_tool_metadata")]

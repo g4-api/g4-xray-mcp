@@ -6,7 +6,6 @@ using Mcp.Xray.Settings;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.Metadata.Ecma335;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -77,6 +76,12 @@ namespace Mcp.Xray.Domain.Repositories
                 Skipped = 0,
                 Data = response
             };
+        }
+
+        /// <inheritdoc />
+        public object GetTest(string idOrKey)
+        {
+            return _xpandClient.GetTestCase(idOrKey);
         }
 
         /// <inheritdoc />
