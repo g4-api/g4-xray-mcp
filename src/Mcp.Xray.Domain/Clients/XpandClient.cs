@@ -941,8 +941,17 @@ namespace Mcp.Xray.Domain.Clients
                     .EnumerateObject()
                     .ToDictionary(i => i.Name, i => i.Value);
 
-                // Adds the loaded steps into the final output.
-                testCaseObject["steps"] = response.GetProperty("steps");
+                // Checks whether any steps were returned by Xray.
+                var isSteps = response.TryGetProperty("steps", out JsonElement steps);
+
+                // If no steps were found, the original test case is returned unmodified.
+                if (!isSteps)
+                {
+                    return response;
+                }
+
+                // Appends the loaded steps into the test case dictionary.
+                testCaseObject["steps"] = steps;
 
                 // Serializes the dictionary back into a JSON string so it can be parsed into a JsonElement.
                 var json = JsonSerializer.Serialize(testCaseObject);
