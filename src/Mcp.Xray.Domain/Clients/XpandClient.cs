@@ -253,6 +253,23 @@ namespace Mcp.Xray.Domain.Clients
         }
 
         /// <summary>
+        /// Adds one or more Xray test cases to an existing Test Plan.
+        /// </summary>
+        /// <param name="testPlan">A tuple containing the identifier and Jira issue key of the target Xray Test Plan.</param>
+        /// <param name="testIds">One or more Xray test issue identifiers to be applied to the Test Plan.</param>
+        /// <returns>The root <see cref="JsonElement"/> of the JSON response returned by the Xray internal API.</returns>
+        public JsonElement AddTestsToPlan((string Id, string Key) testPlan, params string[] testIds)
+        {
+            // Sends the Xray command that applies the specified test cases
+            // to the target Test Plan and returns the parsed JSON response.
+            return XpandCommands
+                .AddTestsToPlan(testPlan.Id, testPlan.Key, testIds)
+                .Send(JiraClient.Invoker)
+                .ConvertToJsonDocument()
+                .RootElement;
+        }
+
+        /// <summary>
         /// Adds one or more Xray test issues to an existing Xray test set.
         /// The method forwards the request to the Xray command layer and returns
         /// the parsed JSON response produced by the API.
@@ -982,7 +999,11 @@ namespace Mcp.Xray.Domain.Clients
             return testCasesResult;
         }
 
-        private static string ResolveFolderPath(JiraClient jiraClient, string projectId, string issueKey, string path)
+        // Resolves a folder path within the Xray Test Repository to its corresponding folder identifier.
+        // The method walks the folder hierarchy by querying the internal repository
+        // structure and matching each path segment to its respective folder.
+        private static string ResolveFolderPath(
+            JiraClient jiraClient, string projectId, string issueKey, string path)
         {
             // Request the repository payload for the project, which includes the full folder list.
             // This endpoint is internal to the Xray UI and may change between versions.

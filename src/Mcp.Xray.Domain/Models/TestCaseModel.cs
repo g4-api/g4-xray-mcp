@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 
 namespace Mcp.Xray.Domain.Models
@@ -9,7 +8,7 @@ namespace Mcp.Xray.Domain.Models
     /// classification, configuration context, execution timing, outcome state, associated steps,
     /// and metadata required for reporting, traceability, and external system integration.
     /// </summary>
-    public class TestCaseModel
+    public class TestCaseModel : NewIssueModelBase
     {
         #region *** Constants    ***
         // Comparer for case-insensitive dictionary keys in ConcurrentDictionaries.
@@ -26,19 +25,6 @@ namespace Mcp.Xray.Domain.Models
         /// Gets or sets the categorical labels associated with this test case for classification and filtering.
         /// </summary>
         public string[] Categories { get; set; } = [];
-
-        /// <summary>
-        /// Gets or sets the contextual key-value data that influences test behavior and execution,
-        /// such as runtime parameters, environment values, or dynamic overrides.
-        /// </summary>
-        public ConcurrentDictionary<string, object> Context { get; set; } =
-            new ConcurrentDictionary<string, object>(_comparer);
-
-        /// <summary>
-        /// Gets or sets the custom field values associated with this test case,
-        /// typically used for external system mapping such as Jira or Xray.
-        /// </summary>
-        public CustomFieldModel[] CustomFields { get; set; } = [];
 
         /// <summary>
         /// Gets or sets the structured input data used by the test case,
@@ -159,22 +145,6 @@ namespace Mcp.Xray.Domain.Models
         #endregion
 
         #region *** Nested Types ***
-        /// <summary>
-        /// Represents a custom field with a name and associated value.
-        /// </summary>
-        public class CustomFieldModel
-        {
-            /// <summary>
-            /// Gets or sets the name of the custom field.
-            /// </summary>
-            public string Name { get; set; } = string.Empty;
-         
-            /// <summary>
-            /// Gets or sets the value assigned to the custom field.
-            /// </summary>
-            public object Value { get; set; }
-        }
-
         /// <summary>
         /// Represents a single step within a test case, describing the action to be performed,
         /// the conditions that define a successful outcome, and the actual execution result

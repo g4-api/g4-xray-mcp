@@ -10,6 +10,8 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+using static System.Net.Mime.MediaTypeNames;
+
 namespace Mcp.Xray.Domain.Repositories
 {
     public class ToolsRepository(IXrayRepository xray) : IToolsRepository
@@ -304,6 +306,27 @@ namespace Mcp.Xray.Domain.Repositories
                     jql: jql);
             }
 
+            // Adds one or more Xray test cases to an existing Test Plan
+            // based on a JQL query.
+            [SystemTool("add_xray_tests_to_plan")]
+            public static object AddXrayTestsToPlan(InvokeOptions options)
+            {
+                // Extract the Test Plan identifier or Jira issue key.
+                // This identifies the target Xray Test Plan to which
+                // test cases will be applied.
+                var key = options.Arguments.GetProperty("key").GetString();
+
+                // Extract the JQL expression used to resolve the test cases
+                // that should be added to the Test Plan.
+                var jql = options.Arguments.GetProperty("jql").GetString();
+
+                // Delegate the operation to the Xray domain layer.
+                // The implementation is responsible for executing the JQL,
+                // resolving test issue IDs, and invoking the internal Xray API
+                // to associate those tests with the Test Plan.
+                return options.Xray.AddTestsToPlan(idOrKey: key, jql);
+            }
+
             // This system tool acts as a read-only query against the Xray API.
             // It expects a valid Xray test issue key (for example: <c>PROJ-123</c>)
             // and returns the full Test Case model as provided by Xray.
@@ -321,11 +344,22 @@ namespace Mcp.Xray.Domain.Repositories
                 return options.Xray.GetTest(idOrKey: key);
             }
 
+            // This system tool exposes read-only metadata about Xray-integrated
+            // MCP tools. It performs a lookup against the internal tool registry
+            // using the supplied tool name and returns the corresponding
+            // tool definition when found.
             [SystemTool("get_xray_tool_metadata")]
             public static object GetXrayTool(InvokeOptions options)
             {
-                var toolName = options.Arguments.GetProperty("toolName").GetString();
+                // Extract the tool name argument provided by the caller.
+                // This value is used as the lookup key in the internal tool registry.
+                var toolName = options.Arguments
+                    .GetProperty("toolName")
+                    .GetString();
 
+                // Attempt to resolve the tool metadata from the registry.
+                // If the tool is not found, return null to indicate
+                // that no matching tool exists.
                 return s_tools.TryGetValue(key: toolName, out McpToolModel tool)
                     ? tool
                     : null;
@@ -348,6 +382,25 @@ namespace Mcp.Xray.Domain.Repositories
                 // Delegate the creation of the test case to the Xray repository,
                 // which handles communication with the underlying Xray API.
                 return options.Xray.NewTest(project, testCase);
+            }
+
+            // Creates a new Xray test plan in Jira based on the provided invocation options.
+            // The invocation context containing the resolved Jira project and the
+            // serialized test plan definition supplied by the caller.
+            [SystemTool("new_xray_test_plan")]
+            public static object NewXrayTestPlan(InvokeOptions options)
+            {
+                // Extract the Jira project identifier from the invocation arguments.
+                // This value determines which Jira project the new test plan will belong to.
+                var project = options.Arguments.GetProperty("project").GetString();
+
+                // Deserialize the test plan definition from the invocation arguments
+                // into a strongly typed domain model using the configured JSON options.
+                var testPlan = options.Arguments.Deserialize<NewTestPlanModel>(AppSettings.JsonOptions);
+
+                // Delegate the creation of the test plan to the Xray repository,
+                // which handles communication with the underlying Xray API.
+                return options.Xray.NewTestPlan(project, testPlan);
             }
 
             // Resolves an Xray Test Repository folder path to its corresponding folder identifier

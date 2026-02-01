@@ -15,13 +15,11 @@ namespace Mcp.Xray.Domain.Repositories
     /// <summary>
     /// Provides an Xray repository implementation backed by the Xpand API,
     /// using Jira as the underlying issue management system.
-    /// </summary>
-    /// <remarks>
     /// This repository is intended for Jira Cloud environments where Xray
     /// functionality is exposed through the Xpand integration.
     /// The repository encapsulates all low-level client interactions and
     /// exposes a stable interface to the rest of the domain.
-    /// </remarks>
+    /// </summary>
     public class XrayXpandRepository(JiraAuthenticationModel jiraAuthentication) : IXrayRepository
     {
         #region *** Fields       ***
@@ -37,7 +35,7 @@ namespace Mcp.Xray.Domain.Repositories
         #endregion
 
         #region *** Methods      ***
-        // Moves Jira issues selected by a JQL query into a folder in the Xray Test Repository.
+        /// <inheritdoc />
         public object AddTestsToFolder(string idOrKey, string path, string jql)
         {
             // Resolve the repository folder identifier from the provided path.
@@ -79,6 +77,27 @@ namespace Mcp.Xray.Domain.Repositories
         }
 
         /// <inheritdoc />
+        public object AddTestsToPlan(string idOrKey, string jql)
+        {
+            try
+            {
+                // Execute the JQL in Jira to resolve matching test cases, then apply them
+                // to the specified Test Plan using the Xray internal API.
+                return AddTests(_jiraClient, _xpandClient, idOrKey, jql);
+            }
+            catch (Exception e)
+            {
+                // Applying test cases to the Test Plan failed.
+                // Return a user-friendly error response suitable for tool/API callers.
+                return new
+                {
+                    Error = e.GetBaseException().Message,
+                    Message = "Failed to add test cases to the Xray Test Plan."
+                };
+            }
+        }
+
+        /// <inheritdoc />
         public object GetTest(string idOrKey)
         {
             return _xpandClient.GetTestCase(idOrKey);
@@ -87,79 +106,86 @@ namespace Mcp.Xray.Domain.Repositories
         /// <inheritdoc />
         public object NewTest(string project, TestCaseModel testCase)
         {
-            // Normalize all values required for creating the base Jira issue into a single options model.
-            // This keeps the request builder isolated from the shape of the incoming domain model.
-            var options = new IssueCreateOptions
+            // Create the base Jira issue representing the Xray test case.
+            var (data, isSuccess) = NewIssue(
+                _jiraClient,
+                jiraAuthentication,
+                project,
+                issueType: "Test",
+                issueModel: testCase);
+
+            // If the Jira issue creation failed, return the raw response for diagnostics.
+            if (!isSuccess)
             {
-                Context = testCase.Context,
-                CustomFields = testCase.CustomFields,
-                Description = testCase.Actual,
-                IssueType = "Test",
-                Project = project,
-                Summary = testCase.Scenario
-            };
-
-            // Build the Jira issue creation request payload, including custom fields when enabled.
-            var testIssue = NewIssueRequest(_jiraClient, options);
-
-            // Define a domain-specific exception that represents an incomplete Jira issue creation result.
-            // This exception is reused across retries to keep error semantics consistent.
-            var issueException = new JiraIssueNotCreatedException(
-                message: "Jira issue was not created successfully. The response did not contain an issue id or key."
-            );
-
-            // Attempt to create the Jira issue with retry semantics to handle transient Jira failures.
-            // The invocation validates that the response contains both id and key before accepting success.
-            var jiraResponse = (JsonElement)InvokeRepeatableRequest(
-                exception: issueException,
-                func: () =>
-                {
-                    // Create the Jira issue and capture the raw JSON response.
-                    var response = _jiraClient.NewIssue(testIssue);
-
-                    //// Attempt to extract both the issue id and key from the Jira response.
-                    //// These values are required to reference the created issue and build links.
-                    //var hasId = response.TryGetProperty("id", out JsonElement id);
-                    //var hasKey = response.TryGetProperty("key", out JsonElement key);
-
-                    //// Treat a missing id or key as a failure since subsequent operations depend on both.
-                    //if (!hasId || !hasKey)
-                    //{
-                    //    throw issueException;
-                    //}
-
-                    // Return the validated Jira response to the caller for further processing.
-                    return response;
-                }
-            );
-
-            // Validate that the Jira response contains the expected issue key property.
-            var isKey = jiraResponse.TryGetProperty("key", out JsonElement key);
-
-            // If the issue key is missing, treat the operation as a failure and return the raw response.
-            if (!isKey)
-            {
-                return jiraResponse;
+                return data;
             }
 
-            // Extract the created issue key and id from the validated Jira response.
-            // These are stored as JsonElement values and converted to strings only when needed.
-            var id = jiraResponse.GetProperty("id").GetString();
-
-            // Build a direct browser link to the newly created Jira issue.
-            var link = $"{jiraAuthentication.Collection}/browse/{key}";
-
             // Create each Xray test step in sequence to preserve order and ensure deterministic indexing.
-            NewTestSteps(_xpandClient, id, key.GetString(), testCase);
+            try
+            {
+                var id = data.GetProperty("id").GetString();
+                var key = data.GetProperty("key").GetString();
+                NewTestSteps(_xpandClient, id, key, testCase);
+            }
+            catch (Exception e)
+            {
+                return new
+                {
+                    Data = data,
+                    Error = e.GetBaseException().Message,
+                    Message = "Xray test was created, but an error occurred while creating test steps."
+                };
+            }
 
             // Return a minimal consumer-friendly representation of the created test.
             // This avoids leaking the full Jira response while still providing key identifiers.
-            return new
+            return data;
+        }
+
+        /// <inheritdoc />
+        public object NewTestPlan(string project, NewTestPlanModel testPlan)
+        {
+            // Create the Test Plan issue in Jira/Xray via the shared issue-creation flow.
+            // The returned payload is expected to include the created issue identifier.
+            var (data, isSuccess) = NewIssue(
+                _jiraClient,
+                jiraAuthentication,
+                project,
+                issueType: "Test Plan",
+                issueModel: testPlan);
+
+            // If creation failed (or no JQL was provided), return the creation response as-is.
+            // Test cases can still be applied later using a dedicated operation.
+            if (!isSuccess || string.IsNullOrWhiteSpace(testPlan.Jql))
             {
-                Id = id,
-                Key = key,
-                Link = link
-            };
+                return data;
+            }
+
+            try
+            {
+                // Extract the created Test Plan ID from the response payload.
+                // This ID is required for the follow-up operation that applies test cases to the plan.
+                var testPlanId = data.GetProperty("id").GetString();
+
+                // Apply test cases to the newly created Test Plan based on the provided JQL.
+                // The JQL is executed in Jira, and the resulting issue IDs are sent to Xray
+                // to associate those tests with the plan.
+                AddTests(_jiraClient, _xpandClient, testPlanId, testPlan.Jql);
+            }
+            catch (Exception e)
+            {
+                // The Test Plan was created successfully, but applying test cases failed.
+                // Return both the created plan payload and a user-friendly error message.
+                return new
+                {
+                    Data = data,
+                    Error = e.GetBaseException().Message,
+                    Message = "Xray test plan was created, but an error occurred while adding test cases."
+                };
+            }
+
+            // Return the created Test Plan payload (tests were applied successfully).
+            return data;
         }
 
         /// <inheritdoc />
@@ -264,6 +290,53 @@ namespace Mcp.Xray.Domain.Repositories
             };
         }
 
+        // Adds test cases selected by a JQL query to the specified Xray Test Plan.
+        // This method encapsulates the full lifecycle of querying Jira for test cases
+        // and associating them with the Test Plan using Xray internal endpoints.
+        private static object AddTests(
+            JiraClient jiraClient,
+            XpandClient xpandClient,
+            string testPlanId,
+            string jql)
+        {
+            // Query Jira using the provided JQL to determine which test cases
+            // should be applied to the specified Test Plan.
+            var issues = jiraClient.GetIssues(jql);
+
+            // Extract Jira issue IDs from the result set.
+            // Only non-empty IDs are included in the final request payload.
+            var issueIds = issues
+                .Select(i => i.TryGetProperty("id", out JsonElement idOut) ? idOut.GetString() : string.Empty)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .ToArray();
+
+            // Create the domain exception used by the retry wrapper.
+            // This represents a failure to apply one or more test cases to the Test Plan.
+            var applyException = new XrayTestCaseNotAppliedException(
+                message: "Failed to apply one or more test cases to the Xray Test Plan."
+            );
+
+            // Retrieve the Jira issue key for the Test Plan.
+            // Xray internal endpoints typically require this key as part of request validation headers.
+            var planMetadata = jiraClient.GetIssue(idOrKey: testPlanId, fields: ["key", "id"]);
+
+            // Extract the plan key and id from the retrieved metadata.
+            var key = planMetadata.GetProperty("key").GetString();
+            var id = planMetadata.GetProperty("id").GetString();
+
+            // Send the Xray internal command to associate the selected test cases with the Test Plan.
+            // Transient integration failures are retried before the domain exception is propagated.
+            return InvokeRepeatableRequest(
+                exception: applyException,
+                func: () =>
+                {
+                    return xpandClient.AddTestsToPlan(
+                        testPlan: (id, key),
+                        testIds: issueIds);
+                }
+            );
+        }
+
         // Executes the provided action repeatedly until it succeeds or the retry limit is reached.
         private static object InvokeRepeatableRequest(Exception exception, Func<object> func)
         {
@@ -302,6 +375,80 @@ namespace Mcp.Xray.Domain.Repositories
             // All retry attempts have failed, so propagate the provided exception
             // to signal an unrecoverable failure to the caller.
             return response;
+        }
+
+        // Creates a new Jira issue using the provided parameters and returns a minimal representation.
+        // This method encapsulates the full lifecycle of issue creation, including request building,
+        // validation, and error handling.
+        private static (JsonElement Data, bool IsSuccess) NewIssue(
+            JiraClient jiraClient,
+            JiraAuthenticationModel jiraAuthentication,
+            string project,
+            string issueType,
+            NewIssueModelBase issueModel)
+        {
+            // Normalize all values required for creating the base Jira issue into a single options model.
+            // This keeps the request builder isolated from the shape of the incoming domain model.
+            var options = new IssueCreateOptions
+            {
+                Context = issueModel.Context,
+                CustomFields = issueModel.CustomFields,
+                Description = issueModel.Description,
+                IssueType = issueType,
+                Project = project,
+                Summary = issueModel.Summary
+            };
+
+            // Build the Jira issue creation request payload, including custom fields when enabled.
+            var testIssue = NewIssueRequest(jiraClient, options);
+
+            // Define a domain-specific exception that represents an incomplete Jira issue creation result.
+            // This exception is reused across retries to keep error semantics consistent.
+            var issueException = new JiraIssueNotCreatedException(
+                message: "Jira issue was not created successfully. The response did not contain an issue id or key."
+            );
+
+            // Attempt to create the Jira issue with retry semantics to handle transient Jira failures.
+            // The invocation validates that the response contains both id and key before accepting success.
+            var jiraResponse = (JsonElement)InvokeRepeatableRequest(
+                exception: issueException,
+                func: () =>
+                {
+                    // Create the Jira issue and capture the raw JSON response.
+                    return jiraClient.NewIssue(testIssue);
+                }
+            );
+
+            // Validate that the Jira response contains the expected issue key property.
+            var isKey = jiraResponse.TryGetProperty("key", out JsonElement key);
+
+            // If the issue key is missing, treat the operation as a failure and return the raw response.
+            if (!isKey)
+            {
+                return (jiraResponse, false);
+            }
+
+            // Extract the created issue key and id from the validated Jira response.
+            // These are stored as JsonElement values and converted to strings only when needed.
+            var id = jiraResponse.GetProperty("id").GetString();
+
+            // Build a direct browser link to the newly created Jira issue.
+            var link = $"{jiraAuthentication.Collection}/browse/{key}";
+
+            // Return a minimal consumer-friendly representation of the created test.
+            // This avoids leaking the full Jira response while still providing key identifiers.
+            var response = new
+            {
+                Id = id,
+                Key = key,
+                Link = link
+            };
+
+            // Serialize the response using the configured JSON options for consistency.
+            var jsonResponse = JsonSerializer.Serialize(response, AppSettings.JsonOptions);
+
+            // Parse and return the serialized response as a JsonElement.
+            return (JsonDocument.Parse(jsonResponse).RootElement, true);
         }
 
         // Builds a Jira issue creation request payload using normalized issue creation options
@@ -438,7 +585,7 @@ namespace Mcp.Xray.Domain.Repositories
             /// <summary>
             /// Gets or sets the custom field values associated with the issue.
             /// </summary>
-            public TestCaseModel.CustomFieldModel[] CustomFields { get; set; }
+            public CustomFieldModel[] CustomFields { get; set; }
 
             /// <summary>
             /// Gets or sets the textual description of the issue.

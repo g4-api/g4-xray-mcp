@@ -21,6 +21,14 @@ namespace Mcp.Xray.Domain.Repositories
         object AddTestsToFolder(string idOrKey, string path, string jql);
 
         /// <summary>
+        /// Applies one or more Xray test cases to an existing Test Plan using a JQL query.
+        /// </summary>
+        /// <param name="idOrKey">The Jira issue identifier or issue key of the target Test Plan.</param>
+        /// <param name="jql">A JQL expression used to resolve the test cases that should be added to the Test Plan.</param>
+        /// <returns>The response payload returned by the Xray integration layer when successful. If the operation fails, a structured object containing error details is returned.</returns>
+        object AddTestsToPlan(string idOrKey, string jql);
+
+        /// <summary>
         /// Gets an existing Xray test case by its Jira issue identifier or key.
         /// </summary>
         /// <param name="idOrKey">The Jira issue identifier or key.</param>
@@ -34,6 +42,14 @@ namespace Mcp.Xray.Domain.Repositories
         /// <param name="testCase">The test case definition containing scenario details and execution steps.</param>
         /// <returns>An object containing the created test issue identifier, key, and a direct link in Jira.</returns>
         object NewTest(string project, TestCaseModel testCase);
+
+        /// <summary>
+        /// Creates a new test plan within the specified project using the provided test plan details.
+        /// </summary>
+        /// <param name="project">The name or identifier of the project in which to create the test plan. Cannot be null or empty.</param>
+        /// <param name="testPlan">An object containing the details of the test plan to be created. Cannot be null.</param>
+        /// <returns>An object representing the newly created test plan. The exact type and structure depend on the implementation.</returns>
+        object NewTestPlan(string project, NewTestPlanModel testPlan);
 
         /// <summary>
         /// Creates a new folder in the Xray Test Repository under the specified project

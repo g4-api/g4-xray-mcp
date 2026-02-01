@@ -1,0 +1,126 @@
+{
+	"description": "Create a new Xray Cloud Test Plan in Jira/Xray using a summary, description, optional JQL for test selection, optional context key-value data, and optional custom fields. Returns the created issue key/id and a direct link.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"context": {
+				"type": [
+					"object"
+				],
+				"description": "Contextual key-value data that influences test behavior and execution (runtime parameters, environment values, dynamic overrides).",
+				"additionalProperties": {
+					"anyOf": [
+						{
+							"type": "string"
+						},
+						{
+							"type": "number"
+						},
+						{
+							"type": "integer"
+						},
+						{
+							"type": "boolean"
+						},
+						{
+							"type": "object"
+						},
+						{
+							"type": "array"
+						},
+						{
+							"type": "null"
+						}
+					]
+				}
+			},
+			"customFields": {
+				"description": "Optional Jira/Xray custom field values to set during creation. Each entry defines a single custom field by its name/key and a value.",
+				"items": {
+					"additionalProperties": false,
+					"properties": {
+						"name": {
+							"description": "The custom field name or key as defined in Jira/Xray (for example, 'Test Level' or 'cf_12345').",
+							"type": [
+								"string"
+							]
+						},
+						"value": {
+							"description": "The value to assign to the custom field.",
+							"type": [
+								"string"
+							]
+						}
+					},
+					"required": [
+						"name",
+						"value"
+					],
+					"type": "object"
+				},
+				"type": [
+					"array"
+				]
+			},
+			"description": {
+				"description": "Detailed description for the Test Plan.",
+				"type": [
+					"string"
+				]
+			},
+			"jql": {
+				"description": "Optional JQL used to define/select the tests included in the Test Plan (if supported by your workflow).",
+				"type": [
+					"string"
+				]
+			},
+			"project": {
+				"description": "Jira project key in which the Test Plan will be created (for example, 'QA' or 'PROJ').",
+				"type": [
+					"string"
+				]
+			},
+			"summary": {
+				"description": "Short human-readable title for the Test Plan.",
+				"type": [
+					"string"
+				]
+			}
+		},
+		"required": [
+			"project",
+			"summary"
+		],
+		"type": "object"
+	},
+	"name": "new_xray_test_plan",
+	"outputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"id": {
+				"description": "Created Test Plan internal identifier (Jira issue id).",
+				"type": [
+					"string"
+				]
+			},
+			"key": {
+				"description": "Created Test Plan key (e.g. PROJECT-123).",
+				"type": [
+					"string"
+				]
+			},
+			"link": {
+				"description": "Direct URL to the created Test Plan in Jira/Xray.",
+				"type": [
+					"string"
+				]
+			}
+		},
+		"required": [
+			"id",
+			"key",
+			"link"
+		],
+		"type": "object"
+	}
+}

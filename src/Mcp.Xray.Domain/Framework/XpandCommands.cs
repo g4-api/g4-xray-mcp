@@ -150,6 +150,40 @@ namespace Mcp.Xray.Domain.Framework
         }
 
         /// <summary>
+        /// Creates an HTTP command that assigns one or more Xray test cases
+        /// to an existing Test Plan.
+        /// </summary>
+        /// <param name="planId">The identifier of the target Xray Test Plan.</param>
+        /// <param name="issueKey">The Jira issue key used for Xray internal request validation.</param>
+        /// <param name="issueIds">One or more Xray test issue identifiers to be added to the Test Plan.</param>
+        /// <returns>An <see cref="HttpCommand"/> configured to execute the Xray internal API request for attaching tests to a Test Plan.</returns>
+        public static HttpCommand AddTestsToPlan(
+            string planId,
+            string issueKey,
+            params string[] issueIds)
+        {
+            return new HttpCommand
+            {
+                // The request body contains the list of test issue IDs
+                // to be associated with the specified Test Plan.
+                Data = issueIds,
+
+                // Internal Xray headers required for authorization and validation.
+                // These headers typically reference an existing Jira issue key
+                // to establish execution context.
+                Headers = NewHeaders(issueKey),
+
+                // Xray requires POST for mutating operations that
+                // associate test cases with a Test Plan.
+                Method = HttpMethod.Post,
+
+                // Internal Xray endpoint responsible for attaching
+                // test cases to a Test Plan.
+                Route = $"/api/internal/issuelinks/testplan/{planId}/tests"
+            };
+        }
+
+        /// <summary>
         /// Creates an <see cref="HttpCommand"/> that adds one or more test issues to an Xray test set.
         /// The method prepares the request body using the provided test identifiers and sends the request
         /// to the relevant Xray endpoint responsible for managing test set contents.

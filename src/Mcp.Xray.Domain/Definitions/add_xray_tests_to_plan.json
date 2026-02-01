@@ -1,0 +1,26 @@
+{
+	"description": "Add test cases to an existing Xray Test Plan by resolving tests using a JQL query.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"jql": {
+				"description": "JQL query used to resolve the test cases that will be added to the Test Plan.",
+				"type": [
+					"string"
+				]
+			},
+			"key": {
+				"description": "Issue key of the target Xray Test Plan (for example, PROJECT-456).",
+				"type": [
+					"string"
+				]
+			}
+		},
+		"required": [
+			"key",
+			"jql"
+		],
+		"type": "object"
+	},
+	"name": "add_xray_tests_to_plan"
+}
