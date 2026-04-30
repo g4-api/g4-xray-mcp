@@ -44,6 +44,7 @@ namespace Mcp.Xray.Domain.Repositories
         private readonly RavenClient _ravenClient = new(jiraAuthentication);
         #endregion
 
+        #region *** Methods      ***
         /// <inheritdoc />
         public object AddTestsToFolder(string idOrKey, string path, string jql)
         {
@@ -257,5 +258,6 @@ namespace Mcp.Xray.Domain.Repositories
         {
             throw new NotImplementedException();
         }
+        #endregion
     }
 }

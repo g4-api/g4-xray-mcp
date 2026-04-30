@@ -4,18 +4,14 @@ using Mcp.Xray.Settings;
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
 using UglyToad.PdfPig;
-
-using static System.Net.Mime.MediaTypeNames;
 
 namespace Mcp.Xray.Domain.Repositories
 {

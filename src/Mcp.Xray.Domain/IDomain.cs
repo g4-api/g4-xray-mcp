@@ -1,5 +1,4 @@
 ﻿using Mcp.Xray.Domain.Clients;
-using Mcp.Xray.Domain.Extensions;
 using Mcp.Xray.Domain.Models;
 using Mcp.Xray.Domain.Repositories;
 using Mcp.Xray.Settings;
@@ -92,7 +91,7 @@ namespace Mcp.Xray.Domain
             {
                 return AppSettings.JiraOptions?.IsCloud == true
                     ? new XrayXpandRepository(jiraAuthentication)
-                    : new XrayRavenRepository();
+                    : new XrayRavenRepository(jiraAuthentication);
             });
 
             // Register the tools repository as a transient service.

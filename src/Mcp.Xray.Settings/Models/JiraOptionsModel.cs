@@ -81,17 +81,31 @@
         public class XrayOptionsModel
         {
             /// <summary>
-            /// The base URL of the Xray Cloud internal API.
+            /// Gets or sets the base URL of the Xray API.
             /// </summary>
             public string BaseUrl { get; set; }
 
-            // The name of the custom field in Jira that is used to store the step information for test cases.
+            /// <summary>
+            /// Gets or sets the Jira custom field name or ID used to store manual test step information.
+            /// </summary>
             public string StepCustomField { get; set; }
 
+            /// <summary>
+            /// Gets or sets the Jira issue type name used when creating Xray test issues.
+            /// </summary>
+            /// <remarks>
+            /// When this value is not configured, callers may fall back to the default Xray issue type name,
+            /// such as <c>Test</c>.
+            /// </remarks>
             public string TestIssueType { get; set; }
 
-            // Jira internal issue type ID for Test issue type.
-            // This is required for Xray as it uses the internal ID to identify issue types.
+            /// <summary>
+            /// Gets or sets the Jira internal issue type ID used for Xray test issues.
+            /// </summary>
+            /// <remarks>
+            /// Xray and Jira APIs may require the internal issue type ID instead of the display name
+            /// when creating or resolving test issue metadata.
+            /// </remarks>
             public string TestIssueTypeId { get; set; }
         }
         #endregion

@@ -1,4 +1,4 @@
-﻿using Mcp.Xray.Domain.Models;
+using Mcp.Xray.Domain.Models;
 
 using System;
 
@@ -25,7 +25,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for attaching defects to test runs.");
         }
 
         /// <summary>
@@ -40,7 +40,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for linking test executions to test plans.");
         }
 
         /// <summary>
@@ -70,7 +70,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing test executions.");
+                "It requires further analysis of the Xray internal API for adding tests to test executions.");
         }
 
         /// <summary>
@@ -90,7 +90,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for assigning tests to test repository folders.");
         }
 
         /// <summary>
@@ -108,7 +108,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for assigning tests to test plans.");
         }
 
         /// <summary>
@@ -123,12 +123,12 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for managing test set contents.");
         }
 
         /// <summary>
         /// Creates an <see cref="HttpCommand"/> that retrieves metadata for the Xray execution details page.
-        /// The method constructs the querystring parameters expected by the Xray servlet endpoint and 
+        /// The method constructs the querystring parameters expected by the Xray servlet endpoint and
         /// returns a GET command targeting that resource.
         /// </summary>
         /// <param name="executionKey">The key of the test execution whose details should be retrieved.</param>
@@ -138,7 +138,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for retrieving test execution detail metadata.");
         }
 
         /// <summary>
@@ -153,12 +153,12 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for loading test run data.");
         }
 
         /// <summary>
         /// Creates an <see cref="HttpCommand"/> that retrieves all Xray test plans
-        /// associated with the specified test issue. The method prepares a GET request 
+        /// associated with the specified test issue. The method prepares a GET request
         /// that queries inbound links pointing from test plans to the given test.
         /// </summary>
         /// <param name="idAndKey">A tuple containing the test issue identifier and its corresponding Jira issue key.</param>
@@ -167,12 +167,12 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for retrieving test plans linked to a test issue.");
         }
 
         /// <summary>
         /// Creates an <see cref="HttpCommand"/> that retrieves all Xray preconditions
-        /// linked to the specified test issue. The method prepares a GET request 
+        /// linked to the specified test issue. The method prepares a GET request
         /// that targets the internal Xray endpoint responsible for listing preconditions.
         /// </summary>
         /// <param name="idAndKey">A tuple containing the test issue identifier and its corresponding Jira issue key.</param>
@@ -181,7 +181,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for retrieving preconditions linked to a test issue.");
         }
 
         /// <summary>
@@ -196,7 +196,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for retrieving test runs for a given execution.");
         }
 
         /// <summary>
@@ -210,12 +210,12 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for retrieving test sets linked to a test issue.");
         }
 
         /// <summary>
         /// Creates an <see cref="HttpCommand"/> that retrieves the steps belonging to an Xray test.
-        /// The method prepares a GET request targeting the internal Xray endpoint that returns 
+        /// The method prepares a GET request targeting the internal Xray endpoint that returns
         /// the ordered step definitions for the given test issue.
         /// </summary>
         /// <param name="idAndKey">A tuple containing the numeric test identifier and the corresponding Jira issue key.</param>
@@ -224,7 +224,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for retrieving test step definitions.");
         }
 
         /// <summary>
@@ -238,12 +238,12 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for retrieving tests linked to a test plan.");
         }
 
         /// <summary>
-        /// Creates an <see cref="HttpCommand"/> that retrieves all Xray test issues 
-        /// associated with the specified test set. The method prepares a GET request 
+        /// Creates an <see cref="HttpCommand"/> that retrieves all Xray test issues
+        /// associated with the specified test set. The method prepares a GET request
         /// targeting the internal Xray endpoint that exposes the tests contained in a test set.
         /// </summary>
         /// <param name="idAndKey">A tuple containing the test set identifier and its corresponding Jira issue key.</param>
@@ -252,7 +252,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for retrieving tests contained in a test set.");
         }
 
         /// <summary>
@@ -265,7 +265,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for retrieving the test repository structure.");
         }
 
         /// <summary>
@@ -280,7 +280,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for posting comments on test executions.");
         }
 
         /// <summary>
@@ -300,7 +300,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for creating test repository folders.");
         }
 
         /// <summary>
@@ -317,7 +317,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for creating test steps.");
         }
 
         /// <summary>
@@ -333,7 +333,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for removing test steps from test issues.");
         }
 
         /// <summary>
@@ -348,7 +348,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for updating test step actual results.");
         }
 
         /// <summary>
@@ -363,7 +363,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for updating test step execution statuses.");
         }
 
         /// <summary>
@@ -379,7 +379,7 @@ namespace Mcp.Xray.Domain.Framework
         {
             throw new NotImplementedException(
                 "This method is not implemented yet. " +
-                "It requires further analysis of the Xray internal API for managing preconditions.");
+                "It requires further analysis of the Xray internal API for updating test run statuses.");
         }
         #endregion
     }
