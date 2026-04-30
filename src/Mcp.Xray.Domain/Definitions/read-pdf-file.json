@@ -1,0 +1,27 @@
+{
+	"description": "Read the full text content from a PDF or plain-text file at the given path. PDF files are extracted page-by-page; all other files are read as plain text.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"filePath": {
+				"description": "Absolute or relative path to the PDF or plain-text file to read.",
+				"type": [ "string" ]
+			}
+		},
+		"required": [ "filePath" ],
+		"type": "object"
+	},
+	"name": "read_pdf_file",
+	"outputSchema": {
+		"additionalProperties": false,
+		"description": "Extracted text content of the file.",
+		"properties": {
+			"content": {
+				"description": "Full text extracted from the file. For PDFs, pages are separated by newlines.",
+				"type": [ "string" ]
+			}
+		},
+		"required": [ "content" ],
+		"type": "object"
+	}
+}

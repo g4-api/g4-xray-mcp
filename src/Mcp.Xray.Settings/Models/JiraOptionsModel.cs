@@ -84,6 +84,15 @@
             /// The base URL of the Xray Cloud internal API.
             /// </summary>
             public string BaseUrl { get; set; }
+
+            // The name of the custom field in Jira that is used to store the step information for test cases.
+            public string StepCustomField { get; set; }
+
+            public string TestIssueType { get; set; }
+
+            // Jira internal issue type ID for Test issue type.
+            // This is required for Xray as it uses the internal ID to identify issue types.
+            public string TestIssueTypeId { get; set; }
         }
         #endregion
     }

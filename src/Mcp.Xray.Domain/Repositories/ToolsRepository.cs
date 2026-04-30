@@ -4,11 +4,16 @@ using Mcp.Xray.Settings;
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Metadata.Ecma335;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+
+using UglyToad.PdfPig;
 
 using static System.Net.Mime.MediaTypeNames;
 
@@ -401,6 +406,46 @@ namespace Mcp.Xray.Domain.Repositories
                 // Delegate the creation of the test plan to the Xray repository,
                 // which handles communication with the underlying Xray API.
                 return options.Xray.NewTestPlan(project, testPlan);
+            }
+
+            // Reads text content from a PDF or plain-text file.
+            [SystemTool("read_pdf_file")]
+            public static object ReadPdfFile(InvokeOptions options)
+            {
+                // Extract the file path from the invocation arguments.
+                var filePath = options.Arguments.GetProperty("filePath").GetString();
+
+                // Read the file content based on its extension.
+                // PDF files are extracted page-by-page with PdfPig.
+                // Non-PDF files are treated as plain-text files.
+                string content;
+                if (Path.GetExtension(filePath).Equals(".pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Open the PDF file for text extraction.
+                    using var document = PdfDocument.Open(filePath);
+
+                    // Accumulate extracted words from all pages into a single text block.
+                    var stringBuilder = new StringBuilder();
+
+                    foreach (var page in document.GetPages())
+                    {
+                        // PdfPig exposes words separately, so join them with spaces to rebuild readable lines.
+                        stringBuilder.AppendLine(string.Join(" ", page.GetWords().Select(i => i.Text)));
+                    }
+
+                    content = stringBuilder.ToString();
+                }
+                else
+                {
+                    // Fall back to direct text reading for non-PDF inputs.
+                    content = File.ReadAllText(filePath);
+                }
+
+                // Return the extracted content to the calling framework.
+                return new
+                {
+                    Content = content
+                };
             }
 
             // Resolves an Xray Test Repository folder path to its corresponding folder identifier

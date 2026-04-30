@@ -8,6 +8,16 @@ namespace Mcp.Xray.Domain.Extensions
     public static class ControllerUtilities
     {
         /// <summary>
+        /// Gets a signature string indicating the creation time in UTC and the source service.
+        /// </summary>
+        /// <remarks>The signature includes the current date and time in the format "yyyy-MM-dd HH:mm:ss"
+        /// followed by the text "UTC: Automatically created by X-Ray MCP Service". The value is generated at the time
+        /// the property is accessed.
+        /// </remarks>
+        public static string CommentSignature =>
+            $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} UTC: Automatically created by X-Ray MCP Service";
+
+        /// <summary>
         /// Writes the ASCII logo to the console, including the specified version number.
         /// </summary>
         /// <param name="version">The version number to display in the logo.</param>

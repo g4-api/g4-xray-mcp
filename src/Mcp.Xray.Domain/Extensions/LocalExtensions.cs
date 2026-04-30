@@ -1,4 +1,5 @@
-﻿using Mcp.Xray.Domain.Framework;
+﻿using Mcp.Xray.Domain.Clients;
+using Mcp.Xray.Domain.Framework;
 using Mcp.Xray.Domain.Models;
 using Mcp.Xray.Settings;
 
@@ -152,7 +153,6 @@ namespace Mcp.Xray.Domain.Extensions
                 return executor.SendCommand(command);
             }
         }
-
 
         extension(HttpRequest request)
         {
@@ -394,6 +394,93 @@ namespace Mcp.Xray.Domain.Extensions
 
                 // Returning the Authentication header in Basic format
                 return new AuthenticationHeaderValue("Basic", encodedHeader);
+            }
+        }
+
+        extension(JiraClient jiraClient)
+        {
+            /// <summary>
+            /// Resolves user-friendly custom field names into Jira field IDs and formats their values
+            /// according to the issue type metadata.
+            /// </summary>
+            /// <param name="project">The Jira project key to resolve fields for.</param>
+            /// <param name="type">The Jira issue type name to resolve fields for, such as <c>Task</c>, <c>Bug</c>, or <c>Story</c>.</param>
+            /// <param name="customFields">An array of <see cref="CustomFieldModel"/> representing the custom fields to resolve.</param>
+            /// <returns>A <see cref="JsonElement" /> containing Jira-ready custom fields keyed by field ID, or the default <see cref="JsonElement" /> value when the requested issue type is not found.</returns>
+            public JsonElement ResolveCustomFields(string project, string type, CustomFieldModel[] customFields)
+            {
+                // Use case-insensitive comparison for all string matching to
+                // be more forgiving of input variations.
+                const StringComparison compare = StringComparison.OrdinalIgnoreCase;
+
+                // Convert the cached Jira project metadata into a JObject so issue types,
+                // fields, schemas, and allowed values can be inspected dynamically.
+                var projectMetaBase = jiraClient.ProjectMeta.ToString();
+                var projectMeta = JObject.Parse(projectMetaBase);
+
+                // Find the issue type metadata that matches the requested issue type name.
+                var issue = projectMeta["issuetypes"]
+                    .FirstOrDefault(i => $"{i.SelectToken("name")}".Equals(type, compare));
+
+                // If the issue type does not exist in the project metadata,
+                // there is nothing to resolve.
+                if (issue == default)
+                {
+                    return default;
+                }
+
+                // Store resolved Jira fields by their real Jira field ID.
+                var fields = new Dictionary<string, object>();
+
+                // Resolve each caller-provided custom field name into its Jira metadata entry.
+                foreach (var customField in customFields)
+                {
+                    // Locate the field by display name under the selected issue type metadata.
+                    var field = issue
+                        .SelectToken("fields")
+                        .Children()
+                        .SelectMany(i => i)
+                        .FirstOrDefault(i => $"{i.SelectToken("name")}".Equals(customField.Name, compare));
+
+                    // Ignore unknown custom field names instead of failing the whole payload.
+                    if (field == null)
+                    {
+                        continue;
+                    }
+
+                    // Extract the Jira field ID, allowed values, and schema type.
+                    // The schema type is used to decide whether the value must be wrapped as an array.
+                    var id = $"{field.SelectToken("fieldId")}";
+                    var values = field.SelectToken("allowedValues");
+                    var schemaType = $"{field.SelectToken("schema.type")}";
+
+                    // Fields without allowed values can accept the raw value directly.
+                    // Array fields still need their value wrapped in an array for Jira.
+                    if (values == null)
+                    {
+                        fields[id] = schemaType.Equals("array", compare)
+                            ? new[] { customField.Value }
+                            : customField.Value;
+
+                        continue;
+                    }
+
+                    // Fields with allowed values must be converted from display value to Jira value ID.
+                    var value = jiraClient.GetAllowedValueId(project, type, $"..{id}", $"{customField.Value}");
+
+                    // Jira expects allowed-value fields to be submitted as objects containing an "id".
+                    // Array fields receive an array of ID objects; scalar fields receive a single ID object.
+                    fields[id] = schemaType.Equals("array", compare)
+                        ? new[] { new Dictionary<string, object> { ["id"] = value } }
+                        : new Dictionary<string, object> { ["id"] = value };
+                }
+
+                // Serialize the resolved field map and convert it into a JsonElement for downstream payload use.
+                var fieldsJson = JsonSerializer.Serialize(fields);
+
+                // Return the resolved fields as a JsonElement, which can be
+                // merged into the final issue creation/update payload.
+                return JsonElement.Parse(fieldsJson);
             }
         }
 

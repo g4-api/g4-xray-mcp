@@ -17,23 +17,22 @@ namespace Mcp.Xray.Domain.Models
 
         #region *** Properties   ***
         /// <summary>
-        /// Gets or sets the actual execution outcome or observed behavior of the test case.
+        /// Gets or sets the observed result or behavior produced during test execution.
         /// </summary>
-        public string Actual { get; set; }
+        public string Actual { get; set; } = string.Empty;
 
         /// <summary>
-        /// Gets or sets the categorical labels associated with this test case for classification and filtering.
+        /// Gets or sets the labels used to classify, group, or filter this test case.
         /// </summary>
         public string[] Categories { get; set; } = [];
 
         /// <summary>
-        /// Gets or sets the structured input data used by the test case,
-        /// commonly representing parameterized or data-driven execution sources.
+        /// Gets or sets the structured input data used for parameterized or data-driven test execution.
         /// </summary>
         public Dictionary<string, object>[] DataSource { get; set; } = [];
 
         /// <summary>
-        /// Gets or sets the timestamp at which the test execution ended.
+        /// Gets or sets the timestamp at which test execution completed.
         /// </summary>
         public DateTime End { get; set; }
 
@@ -43,7 +42,7 @@ namespace Mcp.Xray.Domain.Models
         public string Identifier { get; set; } = string.Empty;
 
         /// <summary>
-        /// Gets or sets a value indicating whether the test outcome is inconclusive.
+        /// Gets or sets a value indicating whether the test result is inconclusive.
         /// </summary>
         public bool Inconclusive { get; set; }
 
@@ -53,13 +52,12 @@ namespace Mcp.Xray.Domain.Models
         public TimeSpan InvocationTime { get; set; }
 
         /// <summary>
-        /// Gets or sets the external system key associated with this test case,
-        /// such as a Jira or Xray identifier.
+        /// Gets or sets the external system key associated with this test case, such as a Jira or Xray key.
         /// </summary>
         public string Key { get; set; } = string.Empty;
 
         /// <summary>
-        /// Gets or sets the direct link to the external system representation of this test case.
+        /// Gets or sets the direct URL to the external system representation of this test case.
         /// </summary>
         public string Link { get; set; } = string.Empty;
 
@@ -69,27 +67,27 @@ namespace Mcp.Xray.Domain.Models
         public string Priority { get; set; } = "0";
 
         /// <summary>
-        /// Gets or sets a computed quality ranking that reflects test reliability or importance.
+        /// Gets or sets the computed quality rank used to represent test value, reliability, or importance.
         /// </summary>
         public double QualityRank { get; set; }
 
         /// <summary>
-        /// Gets or sets the human-readable explanation describing the test outcome.
+        /// Gets or sets the human-readable explanation of the test result or execution status.
         /// </summary>
         public string ReasonPhrase { get; set; } = string.Empty;
 
         /// <summary>
-        /// Gets or sets the total runtime of the test case execution.
+        /// Gets or sets the total elapsed time of the test execution.
         /// </summary>
         public TimeSpan RunTime { get; set; }
 
         /// <summary>
-        /// Gets or sets the short human-readable scenario or title of the test case.
+        /// Gets or sets the human-readable scenario name or title of the test case.
         /// </summary>
         public string Scenario { get; set; } = string.Empty;
 
         /// <summary>
-        /// Gets or sets the time spent performing test setup operations.
+        /// Gets or sets the time spent performing setup operations before the main test flow.
         /// </summary>
         public TimeSpan SetupTime { get; set; }
 
@@ -99,42 +97,54 @@ namespace Mcp.Xray.Domain.Models
         public string Severity { get; set; } = "0";
 
         /// <summary>
-        /// Gets or sets the timestamp at which the test execution started.
+        /// Gets or sets the timestamp at which test execution started.
         /// </summary>
         public DateTime Start { get; set; }
 
         /// <summary>
-        /// Gets or sets the ordered list of execution steps that define the test flow.
+        /// Gets or sets the ordered execution steps that define the main test flow.
         /// </summary>
         public virtual TestStepModel[] Steps { get; set; } = [];
 
         /// <summary>
-        /// Gets or sets the time spent performing teardown operations after execution.
+        /// Gets or sets the time spent performing teardown operations after the main test flow.
         /// </summary>
         public TimeSpan TeardownTime { get; set; }
-
+        
         /// <summary>
-        /// Gets or sets the formal test specifications or detailed description of the test intent.
+        /// Gets or sets the list of test plan keys that this test case is associated with,
+        /// representing the organizational grouping in the external test management system.
         /// </summary>
-        public string TestSpecifications { get; set; }
+        public string[] TestPlans { get; set; } = [];
 
         /// <summary>
-        /// Gets or sets the execution key that uniquely identifies a specific test run.
+        /// Gets or sets the formal test specification or detailed description of the test intent.
+        /// </summary>
+        public string TestSpecifications { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Gets or sets the execution key that identifies a specific test run.
         /// </summary>
         public string TestRunKey { get; set; } = string.Empty;
 
         /// <summary>
-        /// Gets or sets the ordered list of setup steps executed before the main test flow.
+        /// Gets or sets the ordered setup steps executed before the main test flow.
         /// </summary>
-        public TestStepModel[] TestSetup { get; set; }
+        public TestStepModel[] TestSetup { get; set; } = [];
 
         /// <summary>
-        /// Gets or sets the ordered list of teardown steps executed after the main test flow.
+        /// Gets or sets the list of test suite keys that this test case belongs to,
+        /// representing the organizational grouping in the external test management system.
         /// </summary>
-        public TestStepModel[] TestTeardown { get; set; }
+        public string[] TestSuites { get; set; } = [];
 
         /// <summary>
-        /// Gets or sets the acceptable deviation threshold for determining test success.
+        /// Gets or sets the ordered teardown steps executed after the main test flow.
+        /// </summary>
+        public TestStepModel[] TestTeardown { get; set; } = [];
+
+        /// <summary>
+        /// Gets or sets the acceptable deviation threshold used when evaluating test success.
         /// </summary>
         public double Tolerance { get; set; }
 

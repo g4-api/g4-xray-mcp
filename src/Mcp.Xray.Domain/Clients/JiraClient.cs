@@ -104,13 +104,8 @@ namespace Mcp.Xray.Domain.Clients
         /// <summary>
         /// Adds one or more attachment files to the specified Jira issue.
         /// </summary>
-        /// <param name="idOrKey">
-        /// The Jira issue identifier or key (e.g., "BRIFF-123") to which the attachments will be added.
-        /// </param>
-        /// <param name="files">
-        /// An array of local file paths representing the attachments to upload.
-        /// Each file will be sent as multipart/form-data.
-        /// </param>
+        /// <param name="idOrKey">The Jira issue identifier or key (e.g., "BRIFF-123") to which the attachments will be added.</param>
+        /// <param name="files">An array of local file paths representing the attachments to upload. Each file will be sent as multipart/form-data.</param>
         /// <returns>A <see cref="JsonElement"/> containing the Jira API response describing the uploaded attachments.</returns>
         public JsonElement AddAttachments(string idOrKey, params string[] files)
         {
@@ -290,7 +285,8 @@ namespace Mcp.Xray.Domain.Clients
             // Log the resolved field metadata for debugging.
             _logger?.LogDebug(
                 message: "Resolved issue type fields for path {Path} in issue {IdOrKey}: {Fields}",
-                path, idOrKey, definition);
+                path, idOrKey, definition
+            );
 
             // Return the field metadata.
             return JsonElement.Parse(definition);
