@@ -26,6 +26,8 @@ namespace Mcp.Xray.Domain.Models
         /// </summary>
         public string[] Categories { get; set; } = [];
 
+        public override string Description => Scenario;
+
         /// <summary>
         /// Gets or sets the structured input data used for parameterized or data-driven test execution.
         /// </summary>
@@ -105,6 +107,8 @@ namespace Mcp.Xray.Domain.Models
         /// Gets or sets the ordered execution steps that define the main test flow.
         /// </summary>
         public virtual TestStepModel[] Steps { get; set; } = [];
+
+        public override string Summary => TestSpecifications;
 
         /// <summary>
         /// Gets or sets the time spent performing teardown operations after the main test flow.

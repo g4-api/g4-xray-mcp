@@ -315,9 +315,13 @@ namespace Mcp.Xray.Domain.Extensions
                         return "{}";
                     }
 
+                    var project = string.IsNullOrEmpty(authenticationModel.Project)
+                        ? issue.Split('-').FirstOrDefault()
+                        : authenticationModel.Project;
+
                     // Prepare request body by injecting project key and issue key.
                     var data = template
-                        .Replace("[project-key]", authenticationModel.Project)
+                        .Replace("[project-key]", project)
                         .Replace("[issue-key]", issue);
 
                     // Build Jira route.
@@ -345,21 +349,34 @@ namespace Mcp.Xray.Domain.Extensions
                 // Attempts to parse the response and extract the JWT token.
                 try
                 {
+                    var jsonResponse = await GetInteractiveIssueToken(authenticationModel, issueKey);
+
                     // Calls the interactive issue token API and parses the returned JSON into a JObject.
-                    var response = (await GetInteractiveIssueToken(authenticationModel, issueKey))
-                        .ConvertToJsonObject();
+                    var response = jsonResponse.ConvertToJsonObject();
 
                     // Extracts the options JSON fragment from the nested structure.
                     var options = response
-                        .SelectTokens("..options")
+                        .SelectTokens("..uploadToken")
                         .FirstOrDefault()
                         ?.ToString();
 
                     // Parses the options fragment and selects the contextJwt property.
-                    var token = Newtonsoft.Json.Linq.JObject
+                    var token = JObject
                         .Parse(options)
-                        .SelectToken("contextJwt")
+                        .SelectToken("token")
                         ?.ToString();
+
+                    //// Extracts the options JSON fragment from the nested structure.
+                    //var options = response
+                    //    .SelectTokens("..options")
+                    //    .FirstOrDefault()
+                    //    ?.ToString();
+
+                    //// Parses the options fragment and selects the contextJwt property.
+                    //var token = Newtonsoft.Json.Linq.JObject
+                    //    .Parse(options)
+                    //    .SelectToken("contextJwt")
+                    //    ?.ToString();
 
                     // Returns the resolved token or an empty string when not available.
                     return string.IsNullOrEmpty(token)

@@ -535,7 +535,7 @@ namespace Mcp.Xray.Domain.Repositories
 
             // Create each test step using parallel execution while preserving the original index.
             // The index is explicitly passed to Xray to maintain correct step ordering.
-            Parallel.For(0, testCase.Steps.Length, parallelOptions, i =>
+            for (int i = 0; i < testCase.Steps.Length; i++)
             {
                 var step = testCase.Steps[i];
 
@@ -563,7 +563,36 @@ namespace Mcp.Xray.Domain.Repositories
                             index: i);
                     }
                 );
-            });
+            }
+            //Parallel.For(0, testCase.Steps.Length, parallelOptions, i =>
+            //{
+            //    var step = testCase.Steps[i];
+
+            //    // Extract the step action and serialize expected results into a newline-delimited string.
+            //    // This ensures the step remains readable and consistent in the Xray UI.
+            //    var action = step.Action;
+            //    var result = string.Join('\n', step.ExpectedResults);
+
+            //    // Define a domain-specific exception for failures during step creation.
+            //    // The message includes the test key and step index to simplify diagnostics.
+            //    var stepException = new XrayTestStepNotCreatedException(
+            //        message: $"Xray test step was not created successfully for test {key} at index {i}."
+            //    );
+
+            //    // Attempt to create the Xray test step using retry semantics.
+            //    // Transient integration failures are retried before the exception is propagated.
+            //    InvokeRepeatableRequest(
+            //        exception: stepException,
+            //        func: () =>
+            //        {
+            //            return xpandClient.NewTestStep(
+            //                test: (id, key),
+            //                action,
+            //                result,
+            //                index: i);
+            //        }
+            //    );
+            //});
         }
         #endregion
 
