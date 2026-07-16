@@ -30,6 +30,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\Mcp.Xray.Settings\Mcp.Xray.Settings.csproj" />
+		<ProjectReference Include="..\Xpandit.Client\Xpandit.Client.csproj" />
 	</ItemGroup>
 
 </Project>

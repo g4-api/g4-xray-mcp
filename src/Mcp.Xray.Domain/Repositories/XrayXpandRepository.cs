@@ -10,6 +10,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Xpandit.Client;
+
 namespace Mcp.Xray.Domain.Repositories
 {
     /// <summary>

@@ -1,0 +1,196 @@
+{
+    "extension": {
+        "hiddenBy": null,
+        "scopes": [
+            "act-as-user:connect-jira",
+            "admin:connect-jira",
+            "delete:connect-jira",
+            "delete:object:jira",
+            "manage:jira-configuration",
+            "manage:jira-project",
+            "manage:jira-webhook",
+            "project-admin:connect-jira",
+            "read:app-system-token",
+            "read:app-user-token",
+            "read:chat:rovo",
+            "read:connect-jira",
+            "read:jira-user",
+            "read:jira-work",
+            "read:object:jira",
+            "storage:app",
+            "write:connect-jira",
+            "write:jira-work",
+            "write:object:jira"
+        ],
+        "type": "jira:issuePanel",
+        "id": "ari:cloud:ecosystem::extension/aabc368e-39d3-4780-bac0-728244d7a25c/58706501-3c1b-43b8-8ef3-ed808cc0378f/static/test-issue-panel",
+        "environmentId": "58706501-3c1b-43b8-8ef3-ed808cc0378f",
+        "environmentKey": "production",
+        "environmentType": "PRODUCTION",
+        "installationId": "62016919-956f-4100-8755-b8a5ad353a9b",
+        "appVersion": "16.0.0",
+        "consentUrl": "https://id.atlassian.com/outboundAuth/start?containerId=aabc368e-39d3-4780-bac0-728244d7a25c_58706501-3c1b-43b8-8ef3-ed808cc0378f&serviceKey=atlassian-token-service-key&cloudId=dbb254ef-5317-4899-90fa-e1f7a62ee9fb&isAccountBased=true&scopes=read%3Aconnect-jira+write%3Aconnect-jira+delete%3Aconnect-jira+project-admin%3Aconnect-jira+admin%3Aconnect-jira+act-as-user%3Aconnect-jira+read%3Ajira-work+read%3Ajira-user+write%3Ajira-work+manage%3Ajira-project+manage%3Ajira-configuration+manage%3Ajira-webhook+write%3Aobject%3Ajira+read%3Aobject%3Ajira+delete%3Aobject%3Ajira+read%3Achat%3Arovo+offline_access",
+        "properties": {
+            "displayConditions": {
+                "entityPropertyEqualTo": {
+                    "entity": "issueType",
+                    "propertyKey": "com.xpandit.xray.issuetype.test",
+                    "value": "true"
+                },
+                "not": {
+                    "entityPropertyEqualTo": {
+                        "entity": "app",
+                        "propertyKey": "com.xpandit.xray.hideModules",
+                        "value": "true"
+                    }
+                }
+            },
+            "icon": "https://icon.cdn.prod.atlassian-dev.net/aabc368e-39d3-4780-bac0-728244d7a25c/58706501-3c1b-43b8-8ef3-ed808cc0378f/5f93d0d9-530e-43c4-96b4-82eb15af659b/xray-imgs/xray-icon-dark-blue.svg",
+            "key": "test-issue-panel",
+            "resolver": {
+                "endpoint": "xray-backend"
+            },
+            "resource": "test-issue-panel",
+            "resourceUploadId": "5f93d0d9-530e-43c4-96b4-82eb15af659b",
+            "title": "Test details",
+            "type": "jira:issuePanel"
+        },
+        "userAccess": {
+            "hasAccess": true,
+            "enabled": false
+        },
+        "egress": [
+            {
+                "addresses": [
+                    "https://*.amazonaws.com"
+                ],
+                "type": "MEDIA",
+                "category": null,
+                "inScopeEUD": null
+            },
+            {
+                "addresses": [
+                    "https://*.pendo.io"
+                ],
+                "type": "FRAMES",
+                "category": null,
+                "inScopeEUD": null
+            },
+            {
+                "addresses": [
+                    "https://*.amazonaws.com",
+                    "https://*.pendo.io",
+                    "https://store.getxporter.app"
+                ],
+                "type": "IMAGES",
+                "category": null,
+                "inScopeEUD": null
+            },
+            {
+                "addresses": [
+                    "https://*.cdn.atlassian-us-gov-mod.com",
+                    "https://*.pendo.io"
+                ],
+                "type": "STYLES",
+                "category": null,
+                "inScopeEUD": null
+            },
+            {
+                "addresses": [
+                    "https://*.cdn.atlassian-us-gov-mod.com",
+                    "https://*.pendo.io",
+                    "https://au.xray.cloud.getxray.app",
+                    "https://cdn-au.cloud.getxray.app",
+                    "https://cdn-de.cloud.getxray.app",
+                    "https://cdn-eu.cloud.getxray.app",
+                    "https://cdn-staging.cloud.getxray.app",
+                    "https://cdn-us.cloud.getxray.app",
+                    "https://connect-alljs-cdn-bifrost.frontend.cdn.atlassian-us-gov-mod.com",
+                    "https://eu.xray.cloud.getxray.app",
+                    "https://eu.xray.cloud.getxray.app",
+                    "https://static-staging.cloud.getxray.app",
+                    "https://static2-staging.cloud.getxray.app",
+                    "https://us.xray.cloud.getxray.app"
+                ],
+                "type": "SCRIPTS",
+                "category": null,
+                "inScopeEUD": null
+            },
+            {
+                "addresses": [
+                    "https://*.amazonaws.com",
+                    "https://*.pendo.io",
+                    "https://academy.getxray.app",
+                    "https://au.xray.cloud.getxray.app",
+                    "https://cdn-au.cloud.getxray.app",
+                    "https://cdn-de.cloud.getxray.app",
+                    "https://cdn-eu.cloud.getxray.app",
+                    "https://cdn-staging.cloud.getxray.app",
+                    "https://cdn-us.cloud.getxray.app",
+                    "https://docs.getxray.app",
+                    "https://eu.xray.cloud.getxray.app",
+                    "https://eu.xray.cloud.getxray.app",
+                    "https://forge.cdn.prod.atlassian-dev.net",
+                    "https://jira.getxray.app/*",
+                    "https://static-staging.cloud.getxray.app",
+                    "https://static2-staging.cloud.getxray.app",
+                    "https://us.xray.cloud.getxray.app",
+                    "https://www.sembi.com",
+                    "https://xea-launcher.getxray.app/start"
+                ],
+                "type": "FETCH_CLIENT_SIDE",
+                "category": null,
+                "inScopeEUD": null
+            },
+            {
+                "addresses": [
+                    "https://*.amazonaws.com",
+                    "https://au.xray.cloud.getxray.app",
+                    "https://eu.xray.cloud.getxray.app",
+                    "https://us.xray.cloud.getxray.app"
+                ],
+                "type": "FETCH_BACKEND_SIDE",
+                "category": null,
+                "inScopeEUD": null
+            }
+        ],
+        "installationConfig": [
+            {
+                "key": "ALLOW_LOGS_ACCESS",
+                "value": true
+            }
+        ],
+        "license": {
+            "active": true,
+            "type": "commercial",
+            "supportEntitlementNumber": null,
+            "trialEndDate": "2026-08-15T00:00:00Z",
+            "subscriptionEndDate": "2026-08-15T00:00:00Z",
+            "isEvaluation": true,
+            "billingPeriod": "MONTHLY",
+            "ccpEntitlementId": "fcb6efa0-b3f3-353c-98c8-096e16f40a64",
+            "ccpEntitlementSlug": "E-44V-CGB-K8R-Y3N",
+            "capabilitySet": "capabilityAdvanced"
+        },
+        "moduleId": "ari:cloud:ecosystem::extension/aabc368e-39d3-4780-bac0-728244d7a25c/58706501-3c1b-43b8-8ef3-ed808cc0378f/static/test-issue-panel"
+    },
+    "extensionData": {
+        "issue": {
+            "key": "GAR-22",
+            "id": "10097",
+            "type": "Test",
+            "typeId": "10013"
+        },
+        "project": {
+            "id": "10035",
+            "key": "GAR",
+            "type": "software"
+        },
+        "type": "jira:issuePanel",
+        "jira": {
+            "isNewNavigation": true
+        }
+    },
+    "localId": "ari:cloud:ecosystem::extension/aabc368e-39d3-4780-bac0-728244d7a25c/58706501-3c1b-43b8-8ef3-ed808cc0378f/static/test-issue-panel-22e6197c-1784225200408",
+    "useWorkspaceAri": true
+}

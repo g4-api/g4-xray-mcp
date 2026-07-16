@@ -22,4 +22,6 @@
   <Project Path="Mcp.Xray.Domain/Mcp.Xray.Domain.csproj" Id="89fd755a-e1c8-4307-9196-2e66b6bbf037" />
   <Project Path="Mcp.Xray.Settings/Mcp.Xray.Settings.csproj" Id="bb81b984-dfa8-45b5-9655-e6fc6bf829e7" />
   <Project Path="Mcp.Xray/Mcp.Xray.csproj" Id="2b6c8196-add3-4ca1-9b11-d27d60e966ae" />
+  <Project Path="Xpandit.Client.UnitTests/Xpandit.Client.UnitTests.csproj" Id="866f45d2-a638-4c91-9453-41541cc57bb6" />
+  <Project Path="Xpandit.Client/Xpandit.Client.csproj" Id="49b22f63-376b-4e02-b81b-e69e8bd6c411" />
 </Solution>
