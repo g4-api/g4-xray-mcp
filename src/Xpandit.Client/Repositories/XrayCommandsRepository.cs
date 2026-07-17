@@ -46,6 +46,22 @@ namespace Xpandit.Client.Repositories
             // Delegate transport validation and state ownership to one internal client for every command.
             _client = new XrayGraphQlClient(httpClient, options);
         }
+
+        /// <summary>
+        /// Initializes an Xray commands repository over an existing token-owning GraphQL client.
+        /// </summary>
+        /// <param name="client">Shared GraphQL client that owns authentication and repeatable-send state.</param>
+        /// <remarks>
+        /// This overload lets multiple typed command flows reuse one authenticated client without transferring
+        /// ownership of the caller-supplied HTTP infrastructure.
+        /// </remarks>
+        public XrayCommandsRepository(XrayGraphQlClient client)
+        {
+            ArgumentNullException.ThrowIfNull(client);
+
+            // Retain the caller-owned client so every command shares its cached token and retry lifecycle.
+            _client = client;
+        }
         #endregion
 
         #region *** Methods      ***
@@ -198,6 +214,84 @@ namespace Xpandit.Client.Repositories
 
             return folder ?? throw new XpanditClientException(
                 $"Xray did not return folder '{targetPath}' after creating its missing path segments.");
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCreatedTestResult> NewTestAsync(
+            NewTestRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(argument: request, paramName: nameof(request));
+
+            ArgumentNullException.ThrowIfNull(request);
+            ArgumentNullException.ThrowIfNull(request.Jira);
+            ArgumentNullException.ThrowIfNull(request.Steps);
+            ArgumentException.ThrowIfNullOrWhiteSpace(request.TestTypeName);
+
+            // Normalize the Test type and every sparse step before entering the remote creation lifecycle.
+            var testTypeName = request.TestTypeName.Trim();
+            var steps = new List<object>(request.Steps.Count);
+
+            foreach (var step in request.Steps)
+            {
+                ArgumentNullException.ThrowIfNull(step);
+                steps.Add(GetStepInput(step));
+            }
+
+            var variables = new Dictionary<string, object>
+            {
+                ["jira"] = GetJiraInput(request.Jira),
+                ["steps"] = steps,
+                ["testType"] = new Dictionary<string, object>
+                {
+                    ["name"] = testTypeName
+                }
+            };
+
+            // Let Xray create the Jira issue and register its Test definition within one mutation boundary.
+            var data = await _client.InvokeAsync(
+                operationName: "NewTest",
+                query: XrayGraphQlDocuments.NewTest,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Require the complete identity and definition so a partial GraphQL payload never reports success.
+            var payload = GetRequiredProperty(data, "createTest", "NewTest");
+            var test = GetRequiredProperty(payload, "test", "NewTest");
+            var result = GetCreatedIssueResult(payload, "test", "NewTest");
+
+            if (string.IsNullOrWhiteSpace(result.Key))
+            {
+                throw new XpanditClientException("Xray operation 'NewTest' did not return a Jira issue key.");
+            }
+
+            var testType = GetRequiredProperty(test, "testType", "NewTest");
+            var returnedTestTypeName = GetOptionalString(testType, "name") ?? string.Empty;
+
+            if (!string.Equals(returnedTestTypeName, testTypeName, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new XpanditClientException(
+                    $"Xray operation 'NewTest' returned Test type '{returnedTestTypeName}' instead of '{testTypeName}'.");
+            }
+
+            var persistedSteps = GetTestStepResults(test, "NewTest");
+
+            if (persistedSteps.Count != steps.Count)
+            {
+                var message = $"Xray operation 'NewTest' " +
+                    $"returned {persistedSteps.Count} steps after receiving {steps.Count}.";
+                throw new XpanditClientException(message);
+            }
+
+            // Return warnings with the confirmed Test so callers retain non-fatal Xray diagnostics.
+            return new XrayCreatedTestResult
+            {
+                IssueId = result.IssueId,
+                Key = result.Key,
+                Steps = persistedSteps,
+                TestTypeName = returnedTestTypeName,
+                Warnings = result.Warnings
+            };
         }
 
         /// <inheritdoc />
@@ -805,6 +899,30 @@ namespace Xpandit.Client.Repositories
                 Id = GetOptionalString(stepElement, "id") ?? string.Empty,
                 Result = GetOptionalString(stepElement, "result")
             };
+        }
+
+        // Maps the complete step array selected by Test creation and rejects missing or incompatible response data.
+        private static IReadOnlyCollection<XrayTestStepResult> GetTestStepResults(
+            JsonElement testElement,
+            string operationName)
+        {
+            var stepsElement = GetRequiredProperty(testElement, "steps", operationName);
+
+            if (stepsElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new XpanditClientException(
+                    $"Xray operation '{operationName}' did not return a step array.");
+            }
+
+            // Preserve Xray's returned ordering so callers can compare the persisted definition with their request.
+            var steps = new List<XrayTestStepResult>(stepsElement.GetArrayLength());
+
+            foreach (var stepElement in stepsElement.EnumerateArray())
+            {
+                steps.Add(GetTestStepResult(stepElement));
+            }
+
+            return steps;
         }
 
         // Validates custom field identifiers before models enter the transport serialization boundary.

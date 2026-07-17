@@ -57,6 +57,16 @@ namespace Xpandit.Client.Repositories
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Creates one Xray Test together with its Jira issue and ordered manual steps.
+        /// </summary>
+        /// <param name="request">Jira fields, Xray Test type, and initial step definition.</param>
+        /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
+        /// <returns>The registered Test identity, confirmed type, persisted steps, and warnings.</returns>
+        Task<XrayCreatedTestResult> NewTestAsync(
+            NewTestRequest request,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Creates a Test Execution and optionally associates Tests and environments during creation.
         /// </summary>
         /// <param name="request">Jira fields, Test IDs, and environment names.</param>

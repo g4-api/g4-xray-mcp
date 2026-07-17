@@ -11,6 +11,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Xpandit.Client;
+using Xpandit.Client.Models;
+using Xpandit.Client.Repositories;
 
 namespace Mcp.Xray.Domain.Repositories
 {
@@ -108,40 +110,84 @@ namespace Mcp.Xray.Domain.Repositories
         /// <inheritdoc />
         public object NewTest(string project, TestCaseModel testCase)
         {
-            // Create the base Jira issue representing the Xray test case.
-            var (data, isSuccess) = NewIssue(
-                _jiraClient,
-                jiraAuthentication,
-                project,
-                issueType: "Test",
-                issueModel: testCase);
-
-            // If the Jira issue creation failed, return the raw response for diagnostics.
-            if (!isSuccess)
-            {
-                return data;
-            }
-
-            // Create each Xray test step in sequence to preserve order and ensure deterministic indexing.
             try
             {
-                var id = data.GetProperty("id").GetString();
-                var key = data.GetProperty("key").GetString();
-                NewTestSteps(_xpandClient, id, key, testCase);
+                ArgumentNullException.ThrowIfNull(testCase);
+
+                // Preserve the Jira description and resolved custom fields inside Xray's Jira creation payload.
+                var additionalFields = new Dictionary<string, object>
+                {
+                    ["description"] = testCase.Description
+                };
+
+                testCase.CustomFields ??= [];
+
+                foreach (var customField in testCase.CustomFields)
+                {
+                    var resolvedField = _jiraClient.GetCustomField(project, customField.Name);
+
+                    if (!string.IsNullOrWhiteSpace(resolvedField))
+                    {
+                        additionalFields[resolvedField] = customField.Value;
+                    }
+                }
+
+                // Translate the complete ordered definition before sending so one mutation owns issue registration.
+                var steps = new List<XrayTestStepInput>();
+
+                foreach (var testStep in testCase.Steps ?? [])
+                {
+                    ArgumentNullException.ThrowIfNull(testStep);
+                    steps.Add(new XrayTestStepInput
+                    {
+                        Action = testStep.Action,
+                        Result = string.Join('\n', testStep.ExpectedResults ?? [])
+                    });
+                }
+
+                var request = new NewTestRequest
+                {
+                    Jira = new XrayJiraIssue
+                    {
+                        AdditionalFields = additionalFields,
+                        ProjectKey = project,
+                        Summary = testCase.Summary
+                    },
+                    Steps = steps,
+                    TestTypeName = "Manual"
+                };
+
+                // Bridge the existing synchronous domain contract to the isolated GraphQL Test creation command.
+                var graphQlClient = new XrayGraphQlClient(
+                    AppSettings.HttpClient,
+                    AppSettings.JiraOptions.XrayClientOptions);
+                var commandsRepository = new XrayCommandsRepository(graphQlClient);
+                var result = commandsRepository
+                    .NewTestAsync(request)
+                    .GetAwaiter()
+                    .GetResult();
+
+                // Preserve the established response shape while exposing non-fatal Xray creation diagnostics.
+                var response = new
+                {
+                    Id = result.IssueId,
+                    Key = result.Key,
+                    Link = $"{jiraAuthentication.Collection}/browse/{result.Key}",
+                    result.Warnings
+                };
+                var jsonResponse = JsonSerializer.Serialize(response, AppSettings.JsonOptions);
+                using var responseDocument = JsonDocument.Parse(jsonResponse);
+                return responseDocument.RootElement.Clone();
             }
-            catch (Exception e)
+            catch (Exception exception)
             {
+                // Return the established tool-friendly failure envelope without exposing credentials or bearer data.
                 return new
                 {
-                    Data = data,
-                    Error = e.GetBaseException().Message,
-                    Message = "Xray test was created, but an error occurred while creating test steps."
+                    Error = exception.GetBaseException().Message,
+                    Message = "Failed to create the Xray test and its Jira issue."
                 };
             }
-
-            // Return a minimal consumer-friendly representation of the created test.
-            // This avoids leaking the full Jira response while still providing key identifiers.
-            return data;
         }
 
         /// <inheritdoc />
@@ -278,9 +324,8 @@ namespace Mcp.Xray.Domain.Repositories
             // Build a direct browser link to the Jira issue representing the test.
             var link = $"{jiraAuthentication.Collection}/browse/{key}";
 
-            // Recreate the test steps using the updated test case definition.
-            // Step creation follows the configured concurrency and retry semantics.
-            NewTestSteps(_xpandClient, id, key, testCase);
+            // Recreate the test steps sequentially while the standalone client owns authentication and retries.
+            NewTestSteps(id, key, testCase);
 
             // Return a minimal consumer-friendly representation of the updated test.
             // This avoids exposing raw Xray or Jira payloads while preserving key identifiers.
@@ -518,83 +563,56 @@ namespace Mcp.Xray.Domain.Repositories
             return baseRequest;
         }
 
-        // Creates all Xray test steps for a given test case using parallel execution,
-        // respecting the configured concurrency limits.
+        // Creates all Xray test steps through the standalone GraphQL client while preserving their source order.
         private static void NewTestSteps(
-            XpandClient xpandClient,
             string id,
             string key,
             TestCaseModel testCase)
         {
-            // Configure parallel execution behavior based on application settings.
-            // A bucket size of zero forces sequential execution to preserve determinism.
-            var parallelOptions = new ParallelOptions
+            // Avoid validating or authenticating the Xray client when the Test contains no manual steps.
+            if (testCase.Steps.Length == 0)
             {
-                MaxDegreeOfParallelism = AppSettings.JiraOptions.BucketSize == 0
-                    ? 1
-                    : AppSettings.JiraOptions.BucketSize
-            };
+                return;
+            }
 
-            // Create each test step using parallel execution while preserving the original index.
-            // The index is explicitly passed to Xray to maintain correct step ordering.
+            // Create one transport client for the complete batch so authentication and retry state span every step.
+            var graphQlClient = new XrayGraphQlClient(
+                AppSettings.HttpClient,
+                AppSettings.JiraOptions.XrayClientOptions);
+            var commandsRepository = new XrayCommandsRepository(graphQlClient);
+
+            // Send steps sequentially because the add-step mutation appends each result to the current Test version.
             for (int i = 0; i < testCase.Steps.Length; i++)
             {
                 var step = testCase.Steps[i];
 
-                // Extract the step action and serialize expected results into a newline-delimited string.
-                // This ensures the step remains readable and consistent in the Xray UI.
-                var action = step.Action;
-                var result = string.Join('\n', step.ExpectedResults);
-
-                // Define a domain-specific exception for failures during step creation.
-                // The message includes the test key and step index to simplify diagnostics.
-                var stepException = new XrayTestStepNotCreatedException(
-                    message: $"Xray test step was not created successfully for test {key} at index {i}."
-                );
-
-                // Attempt to create the Xray test step using retry semantics.
-                // Transient integration failures are retried before the exception is propagated.
-                InvokeRepeatableRequest(
-                    exception: stepException,
-                    func: () =>
+                // Translate the domain step into the standalone command contract without adding synthetic test data.
+                var request = new AddTestStepRequest
+                {
+                    IssueId = id,
+                    Step = new XrayTestStepInput
                     {
-                        return xpandClient.NewTestStep(
-                            test: (id, key),
-                            action,
-                            result,
-                            index: i);
+                        Action = step.Action,
+                        Result = string.Join('\n', step.ExpectedResults)
                     }
-                );
+                };
+
+                try
+                {
+                    // Bridge the existing synchronous repository contract to the client's async mutation lifecycle.
+                    commandsRepository
+                        .AddTestStepAsync(request)
+                        .GetAwaiter()
+                        .GetResult();
+                }
+                catch (Exception exception)
+                {
+                    // Add the Test key and source index while retaining the actionable GraphQL failure as context.
+                    throw new XrayTestStepNotCreatedException(
+                        message: $"Xray test step was not created successfully for test {key} at index {i}.",
+                        innerException: exception);
+                }
             }
-            //Parallel.For(0, testCase.Steps.Length, parallelOptions, i =>
-            //{
-            //    var step = testCase.Steps[i];
-
-            //    // Extract the step action and serialize expected results into a newline-delimited string.
-            //    // This ensures the step remains readable and consistent in the Xray UI.
-            //    var action = step.Action;
-            //    var result = string.Join('\n', step.ExpectedResults);
-
-            //    // Define a domain-specific exception for failures during step creation.
-            //    // The message includes the test key and step index to simplify diagnostics.
-            //    var stepException = new XrayTestStepNotCreatedException(
-            //        message: $"Xray test step was not created successfully for test {key} at index {i}."
-            //    );
-
-            //    // Attempt to create the Xray test step using retry semantics.
-            //    // Transient integration failures are retried before the exception is propagated.
-            //    InvokeRepeatableRequest(
-            //        exception: stepException,
-            //        func: () =>
-            //        {
-            //            return xpandClient.NewTestStep(
-            //                test: (id, key),
-            //                action,
-            //                result,
-            //                index: i);
-            //        }
-            //    );
-            //});
         }
         #endregion
 

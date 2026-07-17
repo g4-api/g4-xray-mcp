@@ -50,9 +50,9 @@
         public string Username { get; set; }
 
         /// <summary>
-        /// Gets or sets the configuration options for connecting to Xray Cloud.
+        /// Gets or sets the Xray Cloud client configuration bound directly from application settings.
         /// </summary>
-        public XrayOptionsModel XrayOptions { get; set; }
+        public XrayClientOptionsModel XrayClientOptions { get; set; }
         #endregion
 
         #region *** Nested Types ***
@@ -76,9 +76,13 @@
         }
 
         /// <summary>
-        /// Represents configuration options for connecting to the Xray Cloud internal API.
+        /// Extends the standalone Xray client contract with settings retained by legacy Jira integration paths.
         /// </summary>
-        public class XrayOptionsModel
+        /// <remarks>
+        /// Inherited credentials, endpoints, and retry values bind directly into the contract consumed by
+        /// <c>XrayGraphQlClient</c>. The additional properties remain available to older Xpand and Jira operations.
+        /// </remarks>
+        public class XrayClientOptionsModel : Xpandit.Client.Models.XrayClientOptions
         {
             /// <summary>
             /// Gets or sets the base URL of the Xray API.

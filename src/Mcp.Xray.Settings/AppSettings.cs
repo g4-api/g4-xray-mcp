@@ -94,8 +94,10 @@ namespace Mcp.Xray.Settings
                 // Bind the configuration section or fall back to a default model.
                 var jiraOptions = section.Get<JiraOptionsModel>() ?? new JiraOptionsModel();
 
-                // Ensure nested XrayCloudOptions is not null.
-                jiraOptions.XrayOptions ??= new JiraOptionsModel.XrayOptionsModel();
+                // Restore nested defaults after binding so partial configuration remains safe for every consumer.
+                jiraOptions.RetryOptions ??= new JiraOptionsModel.RetryOptionsModel();
+                jiraOptions.XrayClientOptions ??= new JiraOptionsModel.XrayClientOptionsModel();
+                jiraOptions.XrayClientOptions.Retry ??= new Xpandit.Client.Models.XrayRetryOptions();
 
                 // Set default for ApiVersion if not set.
                 jiraOptions.ApiVersion = string.IsNullOrWhiteSpace(jiraOptions.ApiVersion)
@@ -121,11 +123,41 @@ namespace Mcp.Xray.Settings
                 jiraOptions.ResolveCustomFields = GetOrDefault("JIRA_RESOLVE_CUSTOM_FIELDS", jiraOptions.ResolveCustomFields);
                 jiraOptions.Username = GetOrDefault("JIRA_USERNAME", jiraOptions.Username);
 
-                // Xray Cloud specific settings.
-                jiraOptions.XrayOptions.BaseUrl = GetOrDefault(
+                // Preserve the legacy Xray base address for internal Jira integration routes.
+                jiraOptions.XrayClientOptions.BaseUrl = GetOrDefault(
                     environmentParameter: "XRAY_CLOUD_BASE_URL",
-                    defaultValue: jiraOptions.XrayOptions.BaseUrl
+                    defaultValue: jiraOptions.XrayClientOptions.BaseUrl
                 ).TrimEnd('/');
+
+                // Apply Xray API-key credentials without writing secrets back into configuration files.
+                jiraOptions.XrayClientOptions.ClientId = GetOrDefault(
+                    environmentParameter: "XRAY_CLIENT_ID",
+                    defaultValue: jiraOptions.XrayClientOptions.ClientId
+                );
+                jiraOptions.XrayClientOptions.ClientSecret = GetOrDefault(
+                    environmentParameter: "XRAY_CLIENT_SECRET",
+                    defaultValue: jiraOptions.XrayClientOptions.ClientSecret
+                );
+
+                // Resolve public Xray endpoints independently so regional deployments can override either route.
+                jiraOptions.XrayClientOptions.AuthenticationEndpoint = GetUriOrDefault(
+                    environmentParameter: "XRAY_AUTHENTICATION_ENDPOINT",
+                    defaultValue: jiraOptions.XrayClientOptions.AuthenticationEndpoint
+                );
+                jiraOptions.XrayClientOptions.GraphQlEndpoint = GetUriOrDefault(
+                    environmentParameter: "XRAY_GRAPHQL_ENDPOINT",
+                    defaultValue: jiraOptions.XrayClientOptions.GraphQlEndpoint
+                );
+
+                // Bind Xray repeatable-send controls separately from the legacy Jira retry policy.
+                jiraOptions.XrayClientOptions.Retry.Delay = GetTimeSpanOrDefault(
+                    environmentParameter: "XRAY_RETRY_DELAY",
+                    defaultValue: jiraOptions.XrayClientOptions.Retry.Delay
+                );
+                jiraOptions.XrayClientOptions.Retry.MaxAttempts = GetOrDefault(
+                    environmentParameter: "XRAY_MAX_ATTEMPTS",
+                    defaultValue: jiraOptions.XrayClientOptions.Retry.MaxAttempts
+                );
 
                 // Override the configured retry delay with an environment variable value when present.
                 // This allows operational tuning without modifying application configuration files.
@@ -227,6 +259,32 @@ namespace Mcp.Xray.Settings
                 // If any conversion error occurs, return the default value to ensure safe fallback behavior.
                 return defaultValue;
             }
+        }
+
+        // Reads a TimeSpan environment override while retaining the bound retry delay when parsing fails.
+        private static TimeSpan GetTimeSpanOrDefault(string environmentParameter, TimeSpan defaultValue)
+        {
+            // Read the override once so duration parsing remains independent from culture-specific conversion logic.
+            var value = Environment.GetEnvironmentVariable(environmentParameter);
+
+            // Preserve the configured delay when the override is absent or not a valid TimeSpan value.
+            var isTimeSpan = TimeSpan.TryParse(value, out TimeSpan delay);
+            return isTimeSpan
+                ? delay
+                : defaultValue;
+        }
+
+        // Reads an absolute URI environment override while retaining the bound endpoint when parsing fails.
+        private static Uri GetUriOrDefault(string environmentParameter, Uri defaultValue)
+        {
+            // Read the override once so validation and the returned value use the same configuration snapshot.
+            var value = Environment.GetEnvironmentVariable(environmentParameter);
+
+            // Preserve the configured endpoint when the override is absent or not an absolute URI.
+            var isAbsoluteUri = Uri.TryCreate(value, UriKind.Absolute, out Uri endpoint);
+            return isAbsoluteUri
+                ? endpoint
+                : defaultValue;
         }
         #endregion
     }

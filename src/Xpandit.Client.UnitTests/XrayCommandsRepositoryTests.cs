@@ -75,6 +75,34 @@ namespace Xpandit.Client.UnitTests
                 variables.GetProperty("step").GetProperty("customFields")[0].GetProperty("id").GetString());
         }
 
+        [TestMethod(DisplayName = "Verify that an injected XrayGraphQlClient executes typed repository commands.")]
+        public async Task InjectedGraphQlClientTestAsync()
+        {
+            // Arrange: inject one public client so repository commands share its authentication lifecycle.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\"data\":{\"addTestStep\":{\"id\":\"step-1\",\"action\":\"Open page\",\"result\":\"Page opens\"}}}");
+            var repository = new XrayCommandsRepository(NewGraphQlClient(handler));
+
+            // Act: execute the typed step mutation through the constructor used by the domain integration.
+            var result = await repository.AddTestStepAsync(new AddTestStepRequest
+            {
+                IssueId = "10097",
+                Step = new XrayTestStepInput
+                {
+                    Action = "Open page",
+                    Result = "Page opens"
+                }
+            });
+
+            // Assert: the injected client authenticates once and maps the persisted step through the repository.
+            Assert.AreEqual("step-1", result.Id);
+            Assert.AreEqual(2, handler.Requests.Count);
+            Assert.AreEqual("Bearer token-one", handler.Requests[1].Authorization);
+        }
+
         [TestMethod(DisplayName = "Verify that authentication is reused across independent GraphQL commands.")]
         public async Task AuthenticationTokenReuseTestAsync()
         {
@@ -308,6 +336,134 @@ namespace Xpandit.Client.UnitTests
             }
         }
 
+        [TestMethod(DisplayName = "Verify that NewTest creates the Jira issue and ordered Manual definition in one mutation.")]
+        public async Task NewTestCompleteDefinitionTestAsync()
+        {
+            // Arrange: queue one complete Test result containing its Jira identity, type, steps, and warning.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\n" +
+                "    \"data\": {\n" +
+                "        \"createTest\": {\n" +
+                "            \"test\": {\n" +
+                "                \"issueId\": \"10097\",\n" +
+                "                \"testType\": {\"name\": \"Manual\"},\n" +
+                "                \"steps\": [\n" +
+                "                    {\"id\": \"step-1\", \"action\": \"Open page\", \"data\": null, \"result\": \"Page opens\", \"customFields\": []},\n" +
+                "                    {\"id\": \"step-2\", \"action\": \"Sign in\", \"data\": null, \"result\": \"Dashboard opens\", \"customFields\": []}\n" +
+                "                ],\n" +
+                "                \"jira\": {\"key\": \"GAR-22\"}\n" +
+                "            },\n" +
+                "            \"warnings\": [\"description normalized\"]\n" +
+                "        }\n" +
+                "    }\n" +
+                "}");
+            var repository = NewRepository(handler);
+            var request = new NewTestRequest
+            {
+                Jira = new XrayJiraIssue
+                {
+                    AdditionalFields = new Dictionary<string, object>
+                    {
+                        ["description"] = "Verify sign-in.",
+                        ["labels"] = new[] { "automated" }
+                    },
+                    ProjectKey = "GAR",
+                    Summary = "Verify sign-in"
+                },
+                Steps =
+                [
+                    new XrayTestStepInput
+                    {
+                        Action = "Open page",
+                        Result = "Page opens"
+                    },
+                    new XrayTestStepInput
+                    {
+                        Action = "Sign in",
+                        Result = "Dashboard opens"
+                    }
+                ],
+                TestTypeName = "Manual"
+            };
+
+            // Act: create the Jira issue and registered Xray Test through one repository command.
+            var result = await repository.NewTestAsync(request);
+
+            // Assert: the response and variables retain the complete ordered definition without an issue type field.
+            Assert.AreEqual("10097", result.IssueId);
+            Assert.AreEqual("GAR-22", result.Key);
+            Assert.AreEqual("Manual", result.TestTypeName);
+            Assert.AreEqual(2, result.Steps.Count);
+            Assert.AreEqual("step-1", result.Steps.First().Id);
+            CollectionAssert.AreEqual(new[] { "description normalized" }, result.Warnings.ToArray());
+
+            using var requestDocument = JsonDocument.Parse(handler.Requests[1].Body);
+            var variables = requestDocument.RootElement.GetProperty("variables");
+            var jiraFields = variables.GetProperty("jira").GetProperty("fields");
+            var steps = variables.GetProperty("steps");
+            Assert.AreEqual("Manual", variables.GetProperty("testType").GetProperty("name").GetString());
+            Assert.AreEqual("GAR", jiraFields.GetProperty("project").GetProperty("key").GetString());
+            Assert.AreEqual("Verify sign-in", jiraFields.GetProperty("summary").GetString());
+            Assert.AreEqual("Verify sign-in.", jiraFields.GetProperty("description").GetString());
+            Assert.AreEqual("automated", jiraFields.GetProperty("labels")[0].GetString());
+            Assert.IsFalse(jiraFields.TryGetProperty("issuetype", out _));
+            Assert.AreEqual("Open page", steps[0].GetProperty("action").GetString());
+            Assert.AreEqual("Sign in", steps[1].GetProperty("action").GetString());
+        }
+
+        [TestMethod(DisplayName = "Verify that NewTest rejects a null creation payload.")]
+        public async Task NewTestMissingPayloadTestAsync()
+        {
+            // Arrange: authenticate successfully and return an explicit null createTest payload.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(HttpStatusCode.OK, "{\"data\":{\"createTest\":null}}");
+            var repository = NewRepository(handler);
+
+            // Act: capture the protocol failure exposed by the typed creation command.
+            var exception = await Assert.ThrowsExactlyAsync<XpanditClientException>(async () =>
+                await repository.NewTestAsync(new NewTestRequest
+                {
+                    Jira = new XrayJiraIssue
+                    {
+                        ProjectKey = "GAR",
+                        Summary = "Verify sign-in"
+                    }
+                }));
+
+            // Assert: the missing mutation payload is reported instead of being treated as success.
+            StringAssert.Contains(exception.Message, "createTest");
+        }
+
+        [TestMethod(DisplayName = "Verify that NewTest rejects a creation payload without a registered Test.")]
+        public async Task NewTestMissingTestTestAsync()
+        {
+            // Arrange: return the mutation envelope without the Xray Test registration result.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\"data\":{\"createTest\":{\"test\":null,\"warnings\":[]}}}");
+            var repository = NewRepository(handler);
+
+            // Act: capture the missing Test failure through the public repository contract.
+            var exception = await Assert.ThrowsExactlyAsync<XpanditClientException>(async () =>
+                await repository.NewTestAsync(new NewTestRequest
+                {
+                    Jira = new XrayJiraIssue
+                    {
+                        ProjectKey = "GAR",
+                        Summary = "Verify sign-in"
+                    }
+                }));
+
+            // Assert: callers do not receive a false-positive result from an HTTP-success envelope.
+            StringAssert.Contains(exception.Message, "'test'");
+        }
+
         [TestMethod(DisplayName = "Verify that the root XrayGraphQlClient is publicly callable by package consumers.")]
         public async Task PublicClientInvokeTestAsync()
         {
@@ -495,8 +651,8 @@ namespace Xpandit.Client.UnitTests
                 "}";
         }
 
-        // Creates a repository with isolated endpoints and zero retry delay so tests own the complete request sequence.
-        private static XrayCommandsRepository NewRepository(
+        // Creates a public GraphQL client with isolated endpoints and zero delay for deterministic request sequences.
+        private static XrayGraphQlClient NewGraphQlClient(
             TestHttpMessageHandler handler,
             int maxAttempts = 3)
         {
@@ -514,7 +670,15 @@ namespace Xpandit.Client.UnitTests
                 }
             };
 
-            return new XrayCommandsRepository(httpClient, options);
+            return new XrayGraphQlClient(httpClient, options);
+        }
+
+        // Creates a repository over an isolated public client so tests exercise production constructor wiring.
+        private static XrayCommandsRepository NewRepository(
+            TestHttpMessageHandler handler,
+            int maxAttempts = 3)
+        {
+            return new XrayCommandsRepository(NewGraphQlClient(handler, maxAttempts));
         }
         #endregion
     }

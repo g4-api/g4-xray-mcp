@@ -28,4 +28,8 @@
 		<PackageReference Include="Microsoft.Extensions.Primitives" Version="10.0.10" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<ProjectReference Include="..\Xpandit.Client\Xpandit.Client.csproj" />
+	</ItemGroup>
+
 </Project>

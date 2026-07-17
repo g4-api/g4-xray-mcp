@@ -46,7 +46,7 @@ namespace Mcp.Xray.Domain.Framework
 
         // The legacy Xray Cloud Xpand-It endpoint used for JWT-secured operations.
         // This value typically points to <c>https://xray.cloud.xpand-it.com</c>.
-        private static readonly string _xpandBaseAddress = AppSettings.JiraOptions.XrayOptions.BaseUrl;
+        private static readonly string _xpandBaseAddress = AppSettings.JiraOptions.XrayClientOptions.BaseUrl;
         #endregion
 
         #region *** Methods      ***

@@ -23,6 +23,12 @@ namespace Xpandit.Client.Internal
             "createFolder(projectId: $projectId, path: $path) { " +
             "folder { name path } warnings } }";
 
+        internal const string NewTest =
+            "mutation NewTest($testType: UpdateTestTypeInput!, $steps: [CreateStepInput], $jira: JSON!) { " +
+            "createTest(testType: $testType, steps: $steps, jira: $jira) { " +
+            "test { issueId testType { name } steps { " +
+            "id action data result customFields { id value } } jira(fields: [\"key\"]) } warnings } }";
+
         internal const string NewTestExecution =
             "mutation NewTestExecution($testIssueIds: [String], $testEnvironments: [String], $jira: JSON!) { " +
             "createTestExecution(testIssueIds: $testIssueIds, testEnvironments: $testEnvironments, jira: $jira) { " +
