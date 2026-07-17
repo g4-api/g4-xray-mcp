@@ -18,6 +18,101 @@ namespace Xpandit.Client.UnitTests
     public class XrayCommandsRepositoryTests
     {
         #region *** Methods      ***
+        [TestMethod(DisplayName = "Verify that Test Executions are associated with a Test Plan through Xray.")]
+        public async Task AddTestExecutionsToTestPlanTestAsync()
+        {
+            // Arrange: queue the Xray association response and include a duplicate to verify stable request cleanup.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\"data\":{\"addTestExecutionsToTestPlan\":{" +
+                "\"addedTestExecutions\":[\"30001\"],\"warning\":[\"already linked\"]}}}");
+            var repository = NewRepository(handler);
+            var request = new AddTestExecutionsToTestPlanRequest
+            {
+                TestExecutionIssueIds = ["30001", "30001"],
+                TestPlanIssueId = "20001"
+            };
+
+            // Act: create the Xray-owned relationship used to group executions under the plan.
+            var result = await repository.AddTestExecutionsToTestPlanAsync(request);
+
+            // Assert: the response retains diagnostics and the mutation receives one de-duplicated numeric ID.
+            CollectionAssert.AreEqual(new[] { "30001" }, result.AddedTestExecutionIssueIds.ToArray());
+            CollectionAssert.AreEqual(new[] { "already linked" }, result.Warnings.ToArray());
+            Assert.AreEqual("20001", GetRequestVariable(handler.Requests[1].Body, "issueId"));
+
+            using var requestDocument = JsonDocument.Parse(handler.Requests[1].Body);
+            var executionIds = requestDocument.RootElement
+                .GetProperty("variables")
+                .GetProperty("testExecutionIssueIds");
+            Assert.AreEqual(1, executionIds.GetArrayLength());
+            Assert.AreEqual("30001", executionIds[0].GetString());
+        }
+
+        [TestMethod(DisplayName = "Verify that Tests are associated with a Test Execution through Xray.")]
+        public async Task AddTestsToTestExecutionTestAsync()
+        {
+            // Arrange: provide the association payload that triggers Xray Test Run registration.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\"data\":{\"addTestsToTestExecution\":{" +
+                "\"addedTests\":[\"10097\"],\"warning\":[]}}}");
+            var repository = NewRepository(handler);
+            var request = new AddTestsToTestExecutionRequest
+            {
+                TestExecutionIssueId = "30001",
+                TestIssueIds = ["10097"]
+            };
+
+            // Act: associate the Test through Xray instead of creating a Jira issue link.
+            var result = await repository.AddTestsToTestExecutionAsync(request);
+
+            // Assert: the result and serialized variables retain the Xray numeric issue identities.
+            CollectionAssert.AreEqual(new[] { "10097" }, result.AddedTestIssueIds.ToArray());
+            Assert.AreEqual("30001", GetRequestVariable(handler.Requests[1].Body, "issueId"));
+
+            using var requestDocument = JsonDocument.Parse(handler.Requests[1].Body);
+            var testIds = requestDocument.RootElement
+                .GetProperty("variables")
+                .GetProperty("testIssueIds");
+            Assert.AreEqual("10097", testIds[0].GetString());
+        }
+
+        [TestMethod(DisplayName = "Verify that Tests are associated with a Test Plan through Xray.")]
+        public async Task AddTestsToTestPlanTestAsync()
+        {
+            // Arrange: provide one successful Test Plan coverage association response.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\"data\":{\"addTestsToTestPlan\":{" +
+                "\"addedTests\":[\"10097\"],\"warning\":[]}}}");
+            var repository = NewRepository(handler);
+            var request = new AddTestsToTestPlanRequest
+            {
+                TestIssueIds = ["10097"],
+                TestPlanIssueId = "20001"
+            };
+
+            // Act: add the requested coverage to the Test Plan through its Xray mutation.
+            var result = await repository.AddTestsToTestPlanAsync(request);
+
+            // Assert: the public response and GraphQL variables expose the persisted association.
+            CollectionAssert.AreEqual(new[] { "10097" }, result.AddedTestIssueIds.ToArray());
+            Assert.AreEqual("20001", GetRequestVariable(handler.Requests[1].Body, "issueId"));
+
+            using var requestDocument = JsonDocument.Parse(handler.Requests[1].Body);
+            var testIds = requestDocument.RootElement
+                .GetProperty("variables")
+                .GetProperty("testIssueIds");
+            Assert.AreEqual("10097", testIds[0].GetString());
+        }
+
         [TestMethod(DisplayName = "Verify that AddTestStep sends typed variables and maps the persisted step.")]
         public async Task AddTestStepTypedVariablesTestAsync()
         {
@@ -683,6 +778,31 @@ namespace Xpandit.Client.UnitTests
             Assert.AreEqual("Bearer token-two", handler.Requests[3].Authorization);
         }
 
+        [TestMethod(DisplayName = "Verify that UpdateTestRunStatus records the final per-Test execution result.")]
+        public async Task UpdateTestRunStatusTestAsync()
+        {
+            // Arrange: queue the scalar status returned by Xray after a complete manual Test Run update.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\"data\":{\"updateTestRunStatus\":\"PASSED\"}}");
+            var repository = NewRepository(handler);
+            var request = new UpdateTestRunStatusRequest
+            {
+                Status = "PASSED",
+                TestRunId = "run-1"
+            };
+
+            // Act: record the final result against the opaque Xray Test Run identity.
+            var result = await repository.UpdateTestRunStatusAsync(request);
+
+            // Assert: the confirmed status and exact mutation variables are retained for the caller.
+            Assert.AreEqual("PASSED", result);
+            Assert.AreEqual("run-1", GetRequestVariable(handler.Requests[1].Body, "testRunId"));
+            Assert.AreEqual("PASSED", GetRequestVariable(handler.Requests[1].Body, "status"));
+        }
+
         [TestMethod(DisplayName = "Verify that UpdateTestRunStep rejects an update without selected outcome values.")]
         public async Task UpdateTestRunStepEmptyUpdateTestAsync()
         {
@@ -740,6 +860,67 @@ namespace Xpandit.Client.UnitTests
             Assert.IsFalse(updateData.TryGetProperty("comment", out _));
             Assert.IsFalse(variables.TryGetProperty("iterationRank", out _));
             CollectionAssert.AreEqual(new[] { "status normalized" }, result.Warnings.ToArray());
+        }
+
+        [TestMethod(DisplayName = "Verify that WaitForTestRun retries until Xray registers the execution state.")]
+        public async Task WaitForTestRunRegistrationTestAsync()
+        {
+            // Arrange: expose the registration race once before returning the complete Test Run snapshot.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(HttpStatusCode.OK, "{\"data\":{\"getTestRun\":null}}");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\"data\":{\"getTestRun\":{" +
+                "\"id\":\"run-1\",\"status\":{\"name\":\"TODO\"}," +
+                "\"test\":{\"issueId\":\"10097\"}," +
+                "\"testExecution\":{\"issueId\":\"30001\"},\"steps\":[]}}}");
+            var repository = NewRepository(handler);
+            var request = new WaitForTestRunRequest
+            {
+                MaxAttempts = 3,
+                PollingDelay = TimeSpan.Zero,
+                TestExecutionIssueId = "30001",
+                TestIssueId = "10097"
+            };
+
+            // Act: poll through the temporary null result until Xray exposes the registered Test Run.
+            var result = await repository.WaitForTestRunAsync(request);
+
+            // Assert: the second query produces the opaque identity needed for later step and status updates.
+            Assert.AreEqual("run-1", result.Id);
+            Assert.AreEqual("TODO", result.Status);
+            Assert.AreEqual(3, handler.Requests.Count);
+            Assert.AreEqual("10097", GetRequestVariable(handler.Requests[2].Body, "testIssueId"));
+            Assert.AreEqual("30001", GetRequestVariable(handler.Requests[2].Body, "testExecutionIssueId"));
+        }
+
+        [TestMethod(DisplayName = "Verify that WaitForTestRun reports exhausted Xray registration attempts.")]
+        public async Task WaitForTestRunRetryExhaustionTestAsync()
+        {
+            // Arrange: keep the Test Run absent for the complete bounded polling lifecycle.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(HttpStatusCode.OK, "{\"data\":{\"getTestRun\":null}}");
+            handler.AddResponse(HttpStatusCode.OK, "{\"data\":{\"getTestRun\":null}}");
+            var repository = NewRepository(handler);
+            var request = new WaitForTestRunRequest
+            {
+                MaxAttempts = 2,
+                PollingDelay = TimeSpan.Zero,
+                TestExecutionIssueId = "30001",
+                TestIssueId = "10097"
+            };
+
+            // Act: capture the terminal registration failure after the configured query count is exhausted.
+            var exception = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(async () =>
+                await repository.WaitForTestRunAsync(request));
+
+            // Assert: diagnostics identify both Jira issues and the transport performs no extra query or delay.
+            StringAssert.Contains(exception.Message, "10097");
+            StringAssert.Contains(exception.Message, "30001");
+            StringAssert.Contains(exception.Message, "2 attempts");
+            Assert.AreEqual(3, handler.Requests.Count);
         }
 
         [TestMethod(DisplayName = "Verify that public client callables use overloads instead of default parameters.")]

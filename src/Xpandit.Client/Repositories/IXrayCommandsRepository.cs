@@ -17,6 +17,24 @@ namespace Xpandit.Client.Repositories
     {
         #region *** Methods      ***
         /// <summary>
+        /// Adds Test Executions to an existing Test Plan without caller cancellation.
+        /// </summary>
+        /// <param name="request">Numeric Test Plan and Test Execution issue identifiers.</param>
+        /// <returns>The Test Execution identifiers accepted by Xray and non-fatal warnings.</returns>
+        Task<XrayTestExecutionsAssociationResult> AddTestExecutionsToTestPlanAsync(
+            AddTestExecutionsToTestPlanRequest request);
+
+        /// <summary>
+        /// Adds Test Executions to an existing Test Plan with caller cancellation.
+        /// </summary>
+        /// <param name="request">Numeric Test Plan and Test Execution issue identifiers.</param>
+        /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
+        /// <returns>The Test Execution identifiers accepted by Xray and non-fatal warnings.</returns>
+        Task<XrayTestExecutionsAssociationResult> AddTestExecutionsToTestPlanAsync(
+            AddTestExecutionsToTestPlanRequest request,
+            CancellationToken cancellationToken);
+
+        /// <summary>
         /// Adds a manual step to an existing Xray Test without caller cancellation.
         /// </summary>
         /// <param name="request">Test identity, optional version, and step content.</param>
@@ -32,6 +50,42 @@ namespace Xpandit.Client.Repositories
         /// <returns>The manual step persisted by Xray.</returns>
         Task<XrayTestStepResult> AddTestStepAsync(
             AddTestStepRequest request,
+            CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Adds Tests to an existing Test Execution without caller cancellation.
+        /// </summary>
+        /// <param name="request">Numeric Test Execution and Test issue identifiers.</param>
+        /// <returns>The Test identifiers accepted by Xray and non-fatal warnings.</returns>
+        Task<XrayTestsAssociationResult> AddTestsToTestExecutionAsync(
+            AddTestsToTestExecutionRequest request);
+
+        /// <summary>
+        /// Adds Tests to an existing Test Execution with caller cancellation.
+        /// </summary>
+        /// <param name="request">Numeric Test Execution and Test issue identifiers.</param>
+        /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
+        /// <returns>The Test identifiers accepted by Xray and non-fatal warnings.</returns>
+        Task<XrayTestsAssociationResult> AddTestsToTestExecutionAsync(
+            AddTestsToTestExecutionRequest request,
+            CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Adds Tests to an existing Test Plan without caller cancellation.
+        /// </summary>
+        /// <param name="request">Numeric Test Plan and Test issue identifiers.</param>
+        /// <returns>The Test identifiers accepted by Xray and non-fatal warnings.</returns>
+        Task<XrayTestsAssociationResult> AddTestsToTestPlanAsync(
+            AddTestsToTestPlanRequest request);
+
+        /// <summary>
+        /// Adds Tests to an existing Test Plan with caller cancellation.
+        /// </summary>
+        /// <param name="request">Numeric Test Plan and Test issue identifiers.</param>
+        /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
+        /// <returns>The Test identifiers accepted by Xray and non-fatal warnings.</returns>
+        Task<XrayTestsAssociationResult> AddTestsToTestPlanAsync(
+            AddTestsToTestPlanRequest request,
             CancellationToken cancellationToken);
 
         /// <summary>
@@ -201,6 +255,24 @@ namespace Xpandit.Client.Repositories
             CancellationToken cancellationToken);
 
         /// <summary>
+        /// Updates one Test Run status without caller cancellation.
+        /// </summary>
+        /// <param name="request">Opaque Test Run identity and Xray status name or identifier.</param>
+        /// <returns>The status value confirmed by Xray.</returns>
+        Task<string> UpdateTestRunStatusAsync(
+            UpdateTestRunStatusRequest request);
+
+        /// <summary>
+        /// Updates one Test Run status with caller cancellation.
+        /// </summary>
+        /// <param name="request">Opaque Test Run identity and Xray status name or identifier.</param>
+        /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
+        /// <returns>The status value confirmed by Xray.</returns>
+        Task<string> UpdateTestRunStatusAsync(
+            UpdateTestRunStatusRequest request,
+            CancellationToken cancellationToken);
+
+        /// <summary>
         /// Applies sparse manual execution values to one Test Run Step without caller cancellation.
         /// </summary>
         /// <param name="request">Opaque Test Run identities, optional iteration rank, and selected outcome values.</param>
@@ -234,6 +306,26 @@ namespace Xpandit.Client.Repositories
         /// <returns>Command warnings; an empty collection represents a clean mutation.</returns>
         Task<XrayCommandResult> UpdateTestStepAsync(
             UpdateTestStepRequest request,
+            CancellationToken cancellationToken);
+
+        /// <summary>
+        /// Waits for Xray to expose a newly associated Test Run without caller cancellation.
+        /// </summary>
+        /// <param name="request">Composite Test Run identity and bounded logical polling settings.</param>
+        /// <returns>The registered Test Run identity, status, and ordered manual step snapshots.</returns>
+        /// <exception cref="KeyNotFoundException">Thrown when the Test Run remains absent after all attempts.</exception>
+        Task<XrayTestRunResult> WaitForTestRunAsync(
+            WaitForTestRunRequest request);
+
+        /// <summary>
+        /// Waits for Xray to expose a newly associated Test Run with caller cancellation.
+        /// </summary>
+        /// <param name="request">Composite Test Run identity and bounded logical polling settings.</param>
+        /// <param name="cancellationToken">Token that stops pending authentication, polling delay, or HTTP work.</param>
+        /// <returns>The registered Test Run identity, status, and ordered manual step snapshots.</returns>
+        /// <exception cref="KeyNotFoundException">Thrown when the Test Run remains absent after all attempts.</exception>
+        Task<XrayTestRunResult> WaitForTestRunAsync(
+            WaitForTestRunRequest request,
             CancellationToken cancellationToken);
         #endregion
     }

@@ -67,6 +67,70 @@ namespace Xpandit.Client.Repositories
 
         #region *** Methods      ***
         /// <inheritdoc />
+        public async Task<XrayTestExecutionsAssociationResult> AddTestExecutionsToTestPlanAsync(
+            AddTestExecutionsToTestPlanRequest request)
+        {
+            // Route convenience callers through the cancellation-aware association lifecycle.
+            return await AddTestExecutionsToTestPlanAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestExecutionsAssociationResult> AddTestExecutionsToTestPlanAsync(
+            AddTestExecutionsToTestPlanRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the owning Test Plan identity before validating the required execution collection.
+            AssertArguments(request);
+
+            // Validate and de-duplicate execution identifiers while preserving caller association order.
+            var testExecutionIssueIds = GetRequiredNumericIds(
+                request.TestExecutionIssueIds,
+                parameterName: nameof(request),
+                valueName: nameof(request.TestExecutionIssueIds));
+            var variables = new
+            {
+                issueId = request.TestPlanIssueId,
+                testExecutionIssueIds
+            };
+
+            // Associate the executions through Xray so the Test Plan owns a real execution relationship.
+            var data = await _client.InvokeAsync(
+                operationName: "AddTestExecutionsToTestPlan",
+                query: XrayGraphQlDocuments.AddTestExecutionsToTestPlan,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Return the accepted identifiers and warnings so callers can verify the complete association set.
+            var payload = GetRequiredProperty(
+                data,
+                "addTestExecutionsToTestPlan",
+                "AddTestExecutionsToTestPlan");
+            return new XrayTestExecutionsAssociationResult
+            {
+                AddedTestExecutionIssueIds = GetStringCollection(payload, "addedTestExecutions"),
+                Warnings = GetStringCollection(payload, "warning")
+            };
+
+            // Validates the command and owning Test Plan before the parent method maps execution identifiers.
+            // The helper does not mutate caller data and reports nested identity failures against the request.
+            static void AssertArguments(AddTestExecutionsToTestPlanRequest request)
+            {
+                // Require the parent command before accessing its association identities.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require a numeric Test Plan identity because Xray association mutations reject Jira keys.
+                ConfirmNumericId(
+                    request.TestPlanIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestPlanIssueId));
+            }
+        }
+
+        /// <inheritdoc />
         public async Task<XrayTestStepResult> AddTestStepAsync(
             AddTestStepRequest request)
         {
@@ -138,6 +202,128 @@ namespace Xpandit.Client.Repositories
         }
 
         /// <inheritdoc />
+        public async Task<XrayTestsAssociationResult> AddTestsToTestExecutionAsync(
+            AddTestsToTestExecutionRequest request)
+        {
+            // Route convenience callers through the cancellation-aware association lifecycle.
+            return await AddTestsToTestExecutionAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestsAssociationResult> AddTestsToTestExecutionAsync(
+            AddTestsToTestExecutionRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the owning Test Execution identity before validating the required Test collection.
+            AssertArguments(request);
+
+            // Validate and de-duplicate Test identifiers while preserving caller association order.
+            var testIssueIds = GetRequiredNumericIds(
+                request.TestIssueIds,
+                parameterName: nameof(request),
+                valueName: nameof(request.TestIssueIds));
+            var variables = new
+            {
+                issueId = request.TestExecutionIssueId,
+                testIssueIds
+            };
+
+            // Associate the Tests through Xray so Test Runs can be registered for execution results.
+            var data = await _client.InvokeAsync(
+                operationName: "AddTestsToTestExecution",
+                query: XrayGraphQlDocuments.AddTestsToTestExecution,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Return accepted Test identifiers and non-fatal warnings for association verification.
+            var payload = GetRequiredProperty(data, "addTestsToTestExecution", "AddTestsToTestExecution");
+            return new XrayTestsAssociationResult
+            {
+                AddedTestIssueIds = GetStringCollection(payload, "addedTests"),
+                Warnings = GetStringCollection(payload, "warning")
+            };
+
+            // Validates the command and owning Test Execution before the parent method maps Test identifiers.
+            // The helper does not mutate caller data and reports nested identity failures against the request.
+            static void AssertArguments(AddTestsToTestExecutionRequest request)
+            {
+                // Require the parent command before accessing its association identities.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require a numeric Test Execution identity because Xray association mutations reject Jira keys.
+                ConfirmNumericId(
+                    request.TestExecutionIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestExecutionIssueId));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestsAssociationResult> AddTestsToTestPlanAsync(
+            AddTestsToTestPlanRequest request)
+        {
+            // Route convenience callers through the cancellation-aware association lifecycle.
+            return await AddTestsToTestPlanAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestsAssociationResult> AddTestsToTestPlanAsync(
+            AddTestsToTestPlanRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the owning Test Plan identity before validating the required Test collection.
+            AssertArguments(request);
+
+            // Validate and de-duplicate Test identifiers while preserving caller association order.
+            var testIssueIds = GetRequiredNumericIds(
+                request.TestIssueIds,
+                parameterName: nameof(request),
+                valueName: nameof(request.TestIssueIds));
+            var variables = new
+            {
+                issueId = request.TestPlanIssueId,
+                testIssueIds
+            };
+
+            // Associate the Tests through Xray so the Test Plan owns the requested coverage scope.
+            var data = await _client.InvokeAsync(
+                operationName: "AddTestsToTestPlan",
+                query: XrayGraphQlDocuments.AddTestsToTestPlan,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Return accepted Test identifiers and non-fatal warnings for association verification.
+            var payload = GetRequiredProperty(data, "addTestsToTestPlan", "AddTestsToTestPlan");
+            return new XrayTestsAssociationResult
+            {
+                AddedTestIssueIds = GetStringCollection(payload, "addedTests"),
+                Warnings = GetStringCollection(payload, "warning")
+            };
+
+            // Validates the command and owning Test Plan before the parent method maps Test identifiers.
+            // The helper does not mutate caller data and reports nested identity failures against the request.
+            static void AssertArguments(AddTestsToTestPlanRequest request)
+            {
+                // Require the parent command before accessing its association identities.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require a numeric Test Plan identity because Xray association mutations reject Jira keys.
+                ConfirmNumericId(
+                    request.TestPlanIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestPlanIssueId));
+            }
+        }
+
+        /// <inheritdoc />
         public async Task<XrayFolder> GetFoldersAsync(
             GetFoldersRequest request)
         {
@@ -196,37 +382,21 @@ namespace Xpandit.Client.Repositories
             // Assert both issue identities before authentication so invalid local input causes no remote work.
             AssertArguments(request);
 
-            // Preserve the composite Test and Test Execution identity expected by Xray's Test Run lookup.
-            var variables = new
-            {
-                testIssueId = request.TestIssueId,
-                testExecutionIssueId = request.TestExecutionIssueId
-            };
-
-            // Resolve the execution snapshot through the shared authentication and repeatable-send lifecycle.
-            var data = await _client.InvokeAsync(
-                operationName: "GetTestRun",
-                query: XrayGraphQlDocuments.GetTestRun,
-                variables,
+            // Query through the nullable core operation so direct callers retain explicit not-found behavior.
+            var testRun = await GetTestRunCoreAsync(
+                instance: this,
+                request,
                 cancellationToken).ConfigureAwait(false);
 
-            // Distinguish an absent Test Run from an incompatible GraphQL response so callers can report not-found state.
-            if (!data.TryGetProperty("getTestRun", out var testRunElement) ||
-                testRunElement.ValueKind == JsonValueKind.Null)
+            if (testRun is null)
             {
                 var message = $"No Xray Test Run was found for Test '{request.TestIssueId}' " +
                     $"inside Test Execution '{request.TestExecutionIssueId}'.";
                 throw new KeyNotFoundException(message);
             }
 
-            if (testRunElement.ValueKind != JsonValueKind.Object)
-            {
-                var message = "Xray operation 'GetTestRun' returned an invalid Test Run response.";
-                throw new XpanditClientException(message);
-            }
-
             // Map the detached execution snapshot so later mutations can use its opaque run and step identifiers.
-            return GetTestRunResult(testRunElement);
+            return testRun;
 
             // Asserts the composite numeric identity before the parent method allocates GraphQL request state.
             // The helper does not mutate caller data and reports invalid values through argument exceptions.
@@ -757,6 +927,73 @@ namespace Xpandit.Client.Repositories
         }
 
         /// <inheritdoc />
+        public async Task<string> UpdateTestRunStatusAsync(
+            UpdateTestRunStatusRequest request)
+        {
+            // Route convenience callers through the cancellation-aware status lifecycle.
+            return await UpdateTestRunStatusAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<string> UpdateTestRunStatusAsync(
+            UpdateTestRunStatusRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the opaque Test Run identity and requested status before allocating mutation data.
+            AssertArguments(request);
+
+            // Preserve Xray's status name-or-identifier contract inside explicit GraphQL variables.
+            var variables = new
+            {
+                status = request.Status.Trim(),
+                testRunId = request.TestRunId.Trim()
+            };
+
+            // Apply the per-Test result through Xray rather than mutating the Test Execution Jira issue.
+            var data = await _client.InvokeAsync(
+                operationName: "UpdateTestRunStatus",
+                query: XrayGraphQlDocuments.UpdateTestRunStatus,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Require the confirmed scalar so a null GraphQL result never reports a successful execution outcome.
+            var updatedStatus = GetOptionalString(data, "updateTestRunStatus") ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(updatedStatus))
+            {
+                var message = "Xray operation 'UpdateTestRunStatus' did not return the updated status.";
+                throw new XpanditClientException(message);
+            }
+
+            return updatedStatus;
+
+            // Validates the result mutation before the parent method constructs remote request state.
+            // The helper does not mutate caller data and reports nested failures against the owning request.
+            static void AssertArguments(UpdateTestRunStatusRequest request)
+            {
+                // Require the parent command before reading the opaque run identity or status value.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require both values consumed by Xray's scalar Test Run status mutation.
+                if (string.IsNullOrWhiteSpace(request.TestRunId))
+                {
+                    var message = "Update Test Run Status request TestRunId cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Status))
+                {
+                    var message = "Update Test Run Status request Status cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
         public async Task<XrayCommandResult> UpdateTestRunStepAsync(
             UpdateTestRunStepRequest request)
         {
@@ -901,6 +1138,93 @@ namespace Xpandit.Client.Repositories
                 {
                     var message = "Update Test Step request StepId cannot be null or whitespace.";
                     throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestRunResult> WaitForTestRunAsync(
+            WaitForTestRunRequest request)
+        {
+            // Route convenience callers through the cancellation-aware logical polling lifecycle.
+            return await WaitForTestRunAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestRunResult> WaitForTestRunAsync(
+            WaitForTestRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the composite identity and polling bounds before issuing the first GraphQL query.
+            AssertArguments(request);
+
+            // Preserve one immutable lookup identity across attempts so polling cannot drift between Test Runs.
+            var getTestRunRequest = new GetTestRunRequest
+            {
+                TestExecutionIssueId = request.TestExecutionIssueId,
+                TestIssueId = request.TestIssueId
+            };
+            XrayTestRunResult testRun = null;
+
+            for (var attempt = 1; attempt <= request.MaxAttempts; attempt++)
+            {
+                // Query nullable Test Run state because temporary absence is expected during Xray registration.
+                testRun = await GetTestRunCoreAsync(
+                    instance: this,
+                    getTestRunRequest,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (testRun is not null || attempt >= request.MaxAttempts)
+                {
+                    break;
+                }
+
+                // Delay only between attempts so the final absent result returns without an unnecessary wait.
+                await Task.Delay(request.PollingDelay, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (testRun is null)
+            {
+                // Report both owning issues and the bounded attempt count required to diagnose registration latency.
+                var message = $"No Xray Test Run was found for Test '{request.TestIssueId}' inside Test Execution " +
+                    $"'{request.TestExecutionIssueId}' after {request.MaxAttempts} attempts.";
+                throw new KeyNotFoundException(message);
+            }
+
+            return testRun;
+
+            // Validates the composite Test Run identity and bounded polling policy before the parent method performs I/O.
+            // The helper preserves caller state and reports every nested failure against the owning request parameter.
+            static void AssertArguments(WaitForTestRunRequest request)
+            {
+                // Require the parent command before reading identity or polling values.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require both positive numeric Jira identities used by Xray's composite Test Run lookup.
+                ConfirmNumericId(
+                    request.TestExecutionIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestExecutionIssueId));
+                ConfirmNumericId(
+                    request.TestIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestIssueId));
+
+                // Bound logical polling so absent Test Runs cannot keep the caller waiting indefinitely.
+                if (request.MaxAttempts < 1)
+                {
+                    var message = "Wait For Test Run request MaxAttempts must be at least one.";
+                    throw new ArgumentOutOfRangeException(nameof(request), message);
+                }
+
+                if (request.PollingDelay < TimeSpan.Zero)
+                {
+                    var message = "Wait For Test Run request PollingDelay cannot be negative.";
+                    throw new ArgumentOutOfRangeException(nameof(request), message);
                 }
             }
         }
@@ -1059,6 +1383,42 @@ namespace Xpandit.Client.Repositories
             };
         }
 
+        // Queries one Test Run while preserving temporary absence for registration-aware polling callers.
+        private static async Task<XrayTestRunResult> GetTestRunCoreAsync(
+            XrayCommandsRepository instance,
+            GetTestRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            var variables = new
+            {
+                testExecutionIssueId = request.TestExecutionIssueId,
+                testIssueId = request.TestIssueId
+            };
+
+            // Retrieve the composite Test Run through Xray because Jira issue links do not create execution state.
+            var data = await instance._client.InvokeAsync(
+                operationName: "GetTestRun",
+                query: XrayGraphQlDocuments.GetTestRun,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Preserve a null result because Xray can register the Test Run shortly after association completes.
+            if (!data.TryGetProperty("getTestRun", out var testRunElement) ||
+                testRunElement.ValueKind == JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            if (testRunElement.ValueKind != JsonValueKind.Object)
+            {
+                var message = "Xray operation 'GetTestRun' returned an invalid Test Run response.";
+                throw new XpanditClientException(message);
+            }
+
+            // Map the ready execution snapshot only after confirming the GraphQL object shape.
+            return GetTestRunResult(testRunElement);
+        }
+
         // Creates the GraphQL JSON scalar expected by Xray while keeping core Jira fields authoritative.
         private static Dictionary<string, object> GetJiraInput(XrayJiraIssue jira)
         {
@@ -1165,6 +1525,35 @@ namespace Xpandit.Client.Repositories
             foreach (var value in values)
             {
                 ConfirmNumericId(value, parameterName);
+
+                if (uniqueValues.Add(value))
+                {
+                    results.Add(value);
+                }
+            }
+
+            return results;
+        }
+
+        // Validates a required numeric identifier collection, removes duplicates, and preserves caller ordering.
+        private static List<string> GetRequiredNumericIds(
+            IReadOnlyCollection<string> values,
+            string parameterName,
+            string valueName)
+        {
+            if (values is null || values.Count == 0)
+            {
+                var message = $"Xray command value '{valueName}' requires at least one Jira identifier.";
+                throw new ArgumentException(message, parameterName);
+            }
+
+            var results = new List<string>(values.Count);
+            var uniqueValues = new HashSet<string>(StringComparer.Ordinal);
+
+            // Validate every collection entry before retaining its first occurrence for GraphQL serialization.
+            foreach (var value in values)
+            {
+                ConfirmNumericId(value, parameterName, valueName);
 
                 if (uniqueValues.Add(value))
                 {

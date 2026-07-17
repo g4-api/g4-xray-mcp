@@ -4,10 +4,25 @@ namespace Xpandit.Client.Internal
     internal static class XrayGraphQlDocuments
     {
         #region *** Constants    ***
+        internal const string AddTestExecutionsToTestPlan =
+            "mutation AddTestExecutionsToTestPlan($issueId: String!, $testExecutionIssueIds: [String]!) { " +
+            "addTestExecutionsToTestPlan(issueId: $issueId, testExecIssueIds: $testExecutionIssueIds) { " +
+            "addedTestExecutions warning } }";
+
         internal const string AddTestStep =
             "mutation AddTestStep($issueId: String!, $versionId: Int, $step: CreateStepInput!) { " +
             "addTestStep(issueId: $issueId, versionId: $versionId, step: $step) { " +
             "id action data result customFields { id value } } }";
+
+        internal const string AddTestsToTestExecution =
+            "mutation AddTestsToTestExecution($issueId: String!, $testIssueIds: [String]!) { " +
+            "addTestsToTestExecution(issueId: $issueId, testIssueIds: $testIssueIds) { " +
+            "addedTests warning } }";
+
+        internal const string AddTestsToTestPlan =
+            "mutation AddTestsToTestPlan($issueId: String!, $testIssueIds: [String]!) { " +
+            "addTestsToTestPlan(issueId: $issueId, testIssueIds: $testIssueIds) { " +
+            "addedTests warning } }";
 
         internal const string GetFolders =
             "query GetFolders($projectId: String!, $path: String!) { " +
@@ -59,6 +74,10 @@ namespace Xpandit.Client.Internal
             "$updateData: UpdateTestRunStepInput!, $iterationRank: String) { " +
             "updateTestRunStep(testRunId: $testRunId, stepId: $stepId, " +
             "updateData: $updateData, iterationRank: $iterationRank) { warnings } }";
+
+        internal const string UpdateTestRunStatus =
+            "mutation UpdateTestRunStatus($testRunId: String!, $status: String!) { " +
+            "updateTestRunStatus(id: $testRunId, status: $status) }";
 
         internal const string UpdateTestStep =
             "mutation UpdateTestStep($stepId: String!, $step: UpdateStepInput!) { " +
