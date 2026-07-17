@@ -20,7 +20,10 @@ namespace Xpandit.Client.UnitTests
         internal void AddResponse(
             Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> responseFactory)
         {
-            ArgumentNullException.ThrowIfNull(responseFactory);
+            ArgumentNullException.ThrowIfNull(
+                argument: responseFactory,
+                paramName: nameof(responseFactory));
+
             _responses.Enqueue(responseFactory);
         }
 
@@ -52,7 +55,8 @@ namespace Xpandit.Client.UnitTests
 
             if (_responses.Count == 0)
             {
-                throw new InvalidOperationException("No queued HTTP response is available for the request.");
+                var message = "No queued HTTP response is available for the request.";
+                throw new InvalidOperationException(message);
             }
 
             // Consume exactly one response so the queue models the full authentication and retry sequence.

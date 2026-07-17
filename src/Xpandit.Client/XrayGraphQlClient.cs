@@ -57,20 +57,62 @@ namespace Xpandit.Client
         /// <exception cref="ArgumentException">Thrown when credentials, endpoints, or retry values are invalid.</exception>
         public XrayGraphQlClient(HttpClient httpClient, XrayClientOptions options)
         {
-            ArgumentNullException.ThrowIfNull(httpClient);
-            ArgumentNullException.ThrowIfNull(options);
+            AssertArguments(httpClient, options);
 
             // Reject incomplete options at construction so commands never fail after partially entering a retry flow.
             ConfirmOptions(options);
 
+            // Retain caller-owned transport and validated settings for the complete authenticated client lifecycle.
             _httpClient = httpClient;
             _options = options;
+            return;
+
+            // Validates the constructor contract before option members are read or client state is retained.
+            // The explicit parameter names keep failures tied to the public API rather than nested implementation data.
+            static void AssertArguments(HttpClient httpClient, XrayClientOptions options)
+            {
+                // Require both constructor dependencies before validating or retaining either one.
+                ArgumentNullException.ThrowIfNull(
+                    argument: httpClient,
+                    paramName: nameof(httpClient));
+
+                ArgumentNullException.ThrowIfNull(
+                    argument: options,
+                    paramName: nameof(options));
+            }
         }
         #endregion
 
         #region *** Methods      ***
         /// <summary>
-        /// Executes one GraphQL document with serialized variables and returns the cloned <c>data</c> element.
+        /// Executes one GraphQL document without caller cancellation and returns the cloned <c>data</c> element.
+        /// </summary>
+        /// <param name="operationName">Diagnostic operation name included in failures without affecting GraphQL.</param>
+        /// <param name="query">Complete GraphQL query or mutation document sent to Xray.</param>
+        /// <param name="variables">JSON-compatible values serialized into the GraphQL variables object.</param>
+        /// <returns>A detached JSON element containing the GraphQL response's <c>data</c> object.</returns>
+        /// <remarks>
+        /// The method reuses a current token, refreshes once after a 401, and applies the configured transient retry
+        /// policy. The returned element is cloned so callers own it independently from internal response documents.
+        /// </remarks>
+        /// <exception cref="XpanditClientException">
+        /// Thrown after authentication, transport, HTTP, JSON, or GraphQL processing cannot complete the operation.
+        /// </exception>
+        public async Task<JsonElement> InvokeAsync(
+            string operationName,
+            string query,
+            object variables)
+        {
+            // Route convenience callers through the cancellation-aware transport lifecycle.
+            return await InvokeAsync(
+                operationName,
+                query,
+                variables,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Executes one GraphQL document with caller cancellation and returns the cloned <c>data</c> element.
         /// </summary>
         /// <param name="operationName">Diagnostic operation name included in failures without affecting GraphQL.</param>
         /// <param name="query">Complete GraphQL query or mutation document sent to Xray.</param>
@@ -88,11 +130,9 @@ namespace Xpandit.Client
             string operationName,
             string query,
             object variables,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(operationName);
-            ArgumentException.ThrowIfNullOrWhiteSpace(query);
-            ArgumentNullException.ThrowIfNull(variables);
+            AssertArguments(operationName, query, variables);
 
             // Acquire a current token before creating the authorized request so cached credentials are reused safely.
             var accessToken = await GetAccessTokenAsync(cancellationToken).ConfigureAwait(false);
@@ -133,6 +173,25 @@ namespace Xpandit.Client
                     operationName,
                     cancellationToken).ConfigureAwait(false);
             }
+
+            // Validates all values needed to build a repeatable GraphQL request before authentication starts.
+            // Every guard names the declared public parameter so caller diagnostics remain analyzer compliant.
+            static void AssertArguments(string operationName, string query, object variables)
+            {
+                // Require both GraphQL document identifiers before authentication or request allocation begins.
+                ArgumentException.ThrowIfNullOrWhiteSpace(
+                    argument: operationName,
+                    paramName: nameof(operationName));
+
+                ArgumentException.ThrowIfNullOrWhiteSpace(
+                    argument: query,
+                    paramName: nameof(query));
+
+                // Require a serializable variables object because every repeatable send rebuilds it.
+                ArgumentNullException.ThrowIfNull(
+                    argument: variables,
+                    paramName: nameof(variables));
+            }
         }
 
         // Exchanges configured credentials for a bearer token after the synchronized cache admits one caller.
@@ -156,8 +215,9 @@ namespace Xpandit.Client
 
                 if (!response.IsSuccessStatusCode)
                 {
+                    var message = "Xray authentication failed.";
                     throw new XpanditClientException(
-                        "Xray authentication failed.",
+                        message,
                         statusCode: response.StatusCode,
                         responseBody);
                 }
@@ -170,7 +230,8 @@ namespace Xpandit.Client
 
                     if (string.IsNullOrWhiteSpace(accessToken))
                     {
-                        throw new JsonException("The authentication response did not contain an access token.");
+                        var message = "The authentication response did not contain an access token.";
+                        throw new JsonException(message);
                     }
 
                     return accessToken;
@@ -178,8 +239,9 @@ namespace Xpandit.Client
                 catch (JsonException exception)
                 {
                     // Add operation context without exposing the submitted client secret.
+                    var message = "Xray authentication returned an invalid token response.";
                     throw new XpanditClientException(
-                        "Xray authentication returned an invalid token response.",
+                        message,
                         statusCode: response.StatusCode,
                         responseBody,
                         innerException: exception);
@@ -418,8 +480,10 @@ namespace Xpandit.Client
 
             if (!response.IsSuccessStatusCode)
             {
+                var message = $"Xray operation '{operationName}' " +
+                    $"failed with HTTP {(int)response.StatusCode}.";
                 throw new XpanditClientException(
-                    $"Xray operation '{operationName}' failed with HTTP {(int)response.StatusCode}.",
+                    message,
                     statusCode: response.StatusCode,
                     responseBody);
             }
@@ -432,8 +496,9 @@ namespace Xpandit.Client
 
                 if (errors.Count > 0)
                 {
+                    var message = $"Xray operation '{operationName}' returned GraphQL errors.";
                     throw new XpanditClientException(
-                        $"Xray operation '{operationName}' returned GraphQL errors.",
+                        message,
                         statusCode: response.StatusCode,
                         responseBody,
                         errors);
@@ -442,7 +507,8 @@ namespace Xpandit.Client
                 if (!document.RootElement.TryGetProperty("data", out var dataElement) ||
                     dataElement.ValueKind == JsonValueKind.Null)
                 {
-                    throw new JsonException("The GraphQL response did not contain a data object.");
+                    var message = "The GraphQL response did not contain a data object.";
+                    throw new JsonException(message);
                 }
 
                 return dataElement.Clone();
@@ -455,8 +521,9 @@ namespace Xpandit.Client
             catch (JsonException exception)
             {
                 // Retain response context so schema drift can be diagnosed from the caller boundary.
+                var message = $"Xray operation '{operationName}' returned invalid GraphQL JSON.";
                 throw new XpanditClientException(
-                    $"Xray operation '{operationName}' returned invalid GraphQL JSON.",
+                    message,
                     statusCode: response.StatusCode,
                     responseBody,
                     innerException: exception);
@@ -542,9 +609,8 @@ namespace Xpandit.Client
                 }
             }
 
-            throw new XpanditClientException(
-                $"Xray operation '{operationName}' exhausted the repeatable-send policy.",
-                innerException: lastException);
+            var message = $"Xray operation '{operationName}' exhausted the repeatable-send policy.";
+            throw new XpanditClientException(message, innerException: lastException);
         }
 
         // Selects server Retry-After guidance when available and falls back to configured client delay.
@@ -578,34 +644,74 @@ namespace Xpandit.Client
         // Verifies endpoints, credentials, and retry bounds before the transport owns any authentication state.
         private static void ConfirmOptions(XrayClientOptions options)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(options.ClientId);
-            ArgumentException.ThrowIfNullOrWhiteSpace(options.ClientSecret);
-            ArgumentNullException.ThrowIfNull(options.AuthenticationEndpoint);
-            ArgumentNullException.ThrowIfNull(options.GraphQlEndpoint);
-            ArgumentNullException.ThrowIfNull(options.Retry);
+            AssertRequiredOptions(options);
 
             if (!options.AuthenticationEndpoint.IsAbsoluteUri)
             {
-                throw new ArgumentException("The authentication endpoint must be absolute.", nameof(options));
+                var message = "XrayClientOptions.AuthenticationEndpoint must be absolute.";
+                throw new ArgumentException(message, nameof(options));
             }
 
             if (!options.GraphQlEndpoint.IsAbsoluteUri)
             {
-                throw new ArgumentException("The GraphQL endpoint must be absolute.", nameof(options));
+                var message = "XrayClientOptions.GraphQlEndpoint must be absolute.";
+                throw new ArgumentException(message, nameof(options));
             }
 
             if (options.Retry.MaxAttempts < 1)
             {
+                var message = "XrayClientOptions.Retry.MaxAttempts must be at least one.";
                 throw new ArgumentOutOfRangeException(
                     nameof(options),
-                    "Retry MaxAttempts must be at least one.");
+                    message);
             }
 
             if (options.Retry.Delay < TimeSpan.Zero)
             {
+                var message = "XrayClientOptions.Retry.Delay cannot be negative.";
                 throw new ArgumentOutOfRangeException(
                     nameof(options),
-                    "Retry Delay cannot be negative.");
+                    message);
+            }
+
+            return;
+
+            // Validates required nested option values against the owning public parameter contract.
+            // Nested member failures name options to satisfy CA2208 while their messages identify the member.
+            static void AssertRequiredOptions(XrayClientOptions options)
+            {
+                // Require both credential components before any authentication request can be allocated.
+                if (string.IsNullOrWhiteSpace(options.ClientId))
+                {
+                    var message = "XrayClientOptions.ClientId cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(options));
+                }
+
+                if (string.IsNullOrWhiteSpace(options.ClientSecret))
+                {
+                    var message = "XrayClientOptions.ClientSecret cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(options));
+                }
+
+                // Require both public endpoints before testing their absolute URI shape.
+                if (options.AuthenticationEndpoint is null)
+                {
+                    var message = "XrayClientOptions.AuthenticationEndpoint cannot be null.";
+                    throw new ArgumentException(message, nameof(options));
+                }
+
+                if (options.GraphQlEndpoint is null)
+                {
+                    var message = "XrayClientOptions.GraphQlEndpoint cannot be null.";
+                    throw new ArgumentException(message, nameof(options));
+                }
+
+                // Require retry configuration because authentication and GraphQL sends share its lifecycle.
+                if (options.Retry is null)
+                {
+                    var message = "XrayClientOptions.Retry cannot be null.";
+                    throw new ArgumentException(message, nameof(options));
+                }
             }
         }
         #endregion

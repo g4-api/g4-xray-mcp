@@ -17,24 +17,40 @@ namespace Xpandit.Client.Repositories
     {
         #region *** Methods      ***
         /// <summary>
-        /// Adds a manual step to an existing Xray Test and returns its stable step identifier.
+        /// Adds a manual step to an existing Xray Test without caller cancellation.
+        /// </summary>
+        /// <param name="request">Test identity, optional version, and step content.</param>
+        /// <returns>The manual step persisted by Xray.</returns>
+        Task<XrayTestStepResult> AddTestStepAsync(
+            AddTestStepRequest request);
+
+        /// <summary>
+        /// Adds a manual step to an existing Xray Test with caller cancellation.
         /// </summary>
         /// <param name="request">Test identity, optional version, and step content.</param>
         /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
         /// <returns>The manual step persisted by Xray.</returns>
         Task<XrayTestStepResult> AddTestStepAsync(
             AddTestStepRequest request,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken);
 
         /// <summary>
-        /// Gets one Test Repository folder and the recursive child data returned by Xray.
+        /// Gets one Test Repository folder and its recursive child data without caller cancellation.
+        /// </summary>
+        /// <param name="request">Project identity and folder path; root returns the full testing tree.</param>
+        /// <returns>The selected folder, or null when the path does not exist.</returns>
+        Task<XrayFolder> GetFoldersAsync(
+            GetFoldersRequest request);
+
+        /// <summary>
+        /// Gets one Test Repository folder and its recursive child data with caller cancellation.
         /// </summary>
         /// <param name="request">Project identity and folder path; root returns the full testing tree.</param>
         /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
         /// <returns>The selected folder, or null when the path does not exist.</returns>
         Task<XrayFolder> GetFoldersAsync(
             GetFoldersRequest request,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken);
 
         /// <summary>
         /// Gets the manual Test Run identified by its Test and Test Execution issues without caller cancellation.
@@ -57,67 +73,124 @@ namespace Xpandit.Client.Repositories
             CancellationToken cancellationToken);
 
         /// <summary>
-        /// Moves an existing Test to an existing Test Repository folder.
+        /// Moves an existing Test to an existing Test Repository folder without caller cancellation.
+        /// </summary>
+        /// <param name="request">Numeric Test ID and normalized destination path.</param>
+        /// <returns>Command warnings; an empty collection represents a clean mutation.</returns>
+        Task<XrayCommandResult> MoveTestToFolderAsync(
+            MoveTestToFolderRequest request);
+
+        /// <summary>
+        /// Moves an existing Test to an existing Test Repository folder with caller cancellation.
         /// </summary>
         /// <param name="request">Numeric Test ID and normalized destination path.</param>
         /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
         /// <returns>Command warnings; an empty collection represents a clean mutation.</returns>
         Task<XrayCommandResult> MoveTestToFolderAsync(
             MoveTestToFolderRequest request,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken);
 
         /// <summary>
-        /// Ensures every segment of a Test Repository folder path exists and returns the leaf folder.
+        /// Ensures every segment of a Test Repository folder path exists without caller cancellation.
+        /// </summary>
+        /// <param name="request">Project identity and complete path to create.</param>
+        /// <returns>The existing or newly created leaf folder.</returns>
+        Task<XrayFolder> NewFolderAsync(
+            NewFolderRequest request);
+
+        /// <summary>
+        /// Ensures every segment of a Test Repository folder path exists with caller cancellation.
         /// </summary>
         /// <param name="request">Project identity and complete path to create.</param>
         /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
         /// <returns>The existing or newly created leaf folder.</returns>
         Task<XrayFolder> NewFolderAsync(
             NewFolderRequest request,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken);
 
         /// <summary>
-        /// Creates one Xray Test together with its Jira issue and ordered manual steps.
+        /// Creates one Xray Test together with its Jira issue and ordered manual steps without caller cancellation.
+        /// </summary>
+        /// <param name="request">Jira fields, Xray Test type, and initial step definition.</param>
+        /// <returns>The registered Test identity, confirmed type, persisted steps, and warnings.</returns>
+        Task<XrayCreatedTestResult> NewTestAsync(
+            NewTestRequest request);
+
+        /// <summary>
+        /// Creates one Xray Test together with its Jira issue and ordered manual steps with caller cancellation.
         /// </summary>
         /// <param name="request">Jira fields, Xray Test type, and initial step definition.</param>
         /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
         /// <returns>The registered Test identity, confirmed type, persisted steps, and warnings.</returns>
         Task<XrayCreatedTestResult> NewTestAsync(
             NewTestRequest request,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken);
 
         /// <summary>
-        /// Creates a Test Execution and optionally associates Tests and environments during creation.
+        /// Creates a Test Execution and optionally associates Tests and environments without caller cancellation.
+        /// </summary>
+        /// <param name="request">Jira fields, Test IDs, and environment names.</param>
+        /// <returns>The new Test Execution identity, created environments, and warnings.</returns>
+        Task<XrayTestExecutionResult> NewTestExecutionAsync(
+            NewTestExecutionRequest request);
+
+        /// <summary>
+        /// Creates a Test Execution and optionally associates Tests and environments with caller cancellation.
         /// </summary>
         /// <param name="request">Jira fields, Test IDs, and environment names.</param>
         /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
         /// <returns>The new Test Execution identity, created environments, and warnings.</returns>
         Task<XrayTestExecutionResult> NewTestExecutionAsync(
             NewTestExecutionRequest request,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken);
 
         /// <summary>
-        /// Creates a Test Plan and optionally associates Tests during creation.
+        /// Creates a Test Plan and optionally associates Tests without caller cancellation.
+        /// </summary>
+        /// <param name="request">Jira fields and optional numeric Test IDs.</param>
+        /// <returns>The new Test Plan identity and warnings.</returns>
+        Task<XrayCreatedIssueResult> NewTestPlanAsync(
+            NewTestPlanRequest request);
+
+        /// <summary>
+        /// Creates a Test Plan and optionally associates Tests with caller cancellation.
         /// </summary>
         /// <param name="request">Jira fields and optional numeric Test IDs.</param>
         /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
         /// <returns>The new Test Plan identity and warnings.</returns>
         Task<XrayCreatedIssueResult> NewTestPlanAsync(
             NewTestPlanRequest request,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken);
 
         /// <summary>
-        /// Creates a Test Set and optionally associates Tests during creation.
+        /// Creates a Test Set and optionally associates Tests without caller cancellation.
+        /// </summary>
+        /// <param name="request">Jira fields and optional numeric Test IDs.</param>
+        /// <returns>The new Test Set identity and warnings.</returns>
+        Task<XrayCreatedIssueResult> NewTestSetAsync(
+            NewTestSetRequest request);
+
+        /// <summary>
+        /// Creates a Test Set and optionally associates Tests with caller cancellation.
         /// </summary>
         /// <param name="request">Jira fields and optional numeric Test IDs.</param>
         /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
         /// <returns>The new Test Set identity and warnings.</returns>
         Task<XrayCreatedIssueResult> NewTestSetAsync(
             NewTestSetRequest request,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken);
 
         /// <summary>
-        /// Resolves one Jira issue key to the numeric Xray Test identifier required by GraphQL commands.
+        /// Resolves one Jira issue key to its numeric Xray Test identifier without caller cancellation.
+        /// </summary>
+        /// <param name="issueKey">Human-readable Jira key such as <c>GAR-22</c>.</param>
+        /// <returns>The numeric Test issue identifier.</returns>
+        /// <exception cref="KeyNotFoundException">Thrown when Xray returns no Test for the key.</exception>
+        Task<string> ResolveTestIssueIdAsync(
+            string issueKey);
+
+        /// <summary>
+        /// Resolves one Jira issue key to its numeric Xray Test identifier with caller cancellation.
         /// </summary>
         /// <param name="issueKey">Human-readable Jira key such as <c>GAR-22</c>.</param>
         /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
@@ -125,7 +198,7 @@ namespace Xpandit.Client.Repositories
         /// <exception cref="KeyNotFoundException">Thrown when Xray returns no Test for the key.</exception>
         Task<string> ResolveTestIssueIdAsync(
             string issueKey,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken);
 
         /// <summary>
         /// Applies sparse manual execution values to one Test Run Step without caller cancellation.
@@ -146,14 +219,22 @@ namespace Xpandit.Client.Repositories
             CancellationToken cancellationToken);
 
         /// <summary>
-        /// Applies a partial update to an existing Xray manual test step.
+        /// Applies a partial update to an existing Xray manual test step without caller cancellation.
+        /// </summary>
+        /// <param name="request">Step identity and replacement values.</param>
+        /// <returns>Command warnings; an empty collection represents a clean mutation.</returns>
+        Task<XrayCommandResult> UpdateTestStepAsync(
+            UpdateTestStepRequest request);
+
+        /// <summary>
+        /// Applies a partial update to an existing Xray manual test step with caller cancellation.
         /// </summary>
         /// <param name="request">Step identity and replacement values.</param>
         /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
         /// <returns>Command warnings; an empty collection represents a clean mutation.</returns>
         Task<XrayCommandResult> UpdateTestStepAsync(
             UpdateTestStepRequest request,
-            CancellationToken cancellationToken = default);
+            CancellationToken cancellationToken);
         #endregion
     }
 }

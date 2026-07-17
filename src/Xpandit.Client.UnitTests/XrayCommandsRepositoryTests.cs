@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using System.Text.Json;
 
 using Xpandit.Client;
@@ -741,6 +742,32 @@ namespace Xpandit.Client.UnitTests
             CollectionAssert.AreEqual(new[] { "status normalized" }, result.Warnings.ToArray());
         }
 
+        [TestMethod(DisplayName = "Verify that public client callables use overloads instead of default parameters.")]
+        public void PublicCallablesUseOverloadsTest()
+        {
+            // Arrange: collect the package commands, direct transport calls, and diagnostic constructors.
+            var methodParameters = typeof(IXrayCommandsRepository)
+                .GetMethods()
+                .SelectMany(method => method.GetParameters())
+                .Concat(typeof(XrayGraphQlClient)
+                    .GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Instance | BindingFlags.Public)
+                    .SelectMany(method => method.GetParameters()));
+            var constructorParameters = typeof(XpanditClientException)
+                .GetConstructors()
+                .SelectMany(constructor => constructor.GetParameters());
+
+            // Act: identify any public parameter that can silently supply a signature-level default value.
+            var defaultedParameters = methodParameters
+                .Concat(constructorParameters)
+                .Where(parameter => parameter.HasDefaultValue)
+                .Select(parameter => $"{parameter.Member.DeclaringType?.Name}.{parameter.Member.Name}:{parameter.Name}")
+                .ToList();
+
+            // Assert: callers select an explicit adjacent overload for every optional execution path.
+            var message = $"Default-valued public parameters: {string.Join(", ", defaultedParameters)}";
+            Assert.AreEqual(0, defaultedParameters.Count, message);
+        }
+
         // Reads one string variable from a captured GraphQL request while disposing temporary JSON state locally.
         private static string GetRequestVariable(string requestBody, string variableName)
         {
@@ -803,8 +830,16 @@ namespace Xpandit.Client.UnitTests
 
         // Creates a public GraphQL client with isolated endpoints and zero delay for deterministic request sequences.
         private static XrayGraphQlClient NewGraphQlClient(
+            TestHttpMessageHandler handler)
+        {
+            // Route the common test setup through the configurable helper with its standard repeat count.
+            return NewGraphQlClient(handler, maxAttempts: 3);
+        }
+
+        // Creates a public GraphQL client with a caller-selected attempt count for retry-focused test scenarios.
+        private static XrayGraphQlClient NewGraphQlClient(
             TestHttpMessageHandler handler,
-            int maxAttempts = 3)
+            int maxAttempts)
         {
             var httpClient = new HttpClient(handler);
             var options = new XrayClientOptions
@@ -825,8 +860,16 @@ namespace Xpandit.Client.UnitTests
 
         // Creates a repository over an isolated public client so tests exercise production constructor wiring.
         private static XrayCommandsRepository NewRepository(
+            TestHttpMessageHandler handler)
+        {
+            // Route the common repository setup through the configurable helper with its standard repeat count.
+            return NewRepository(handler, maxAttempts: 3);
+        }
+
+        // Creates a repository with a caller-selected attempt count for retry-focused command scenarios.
+        private static XrayCommandsRepository NewRepository(
             TestHttpMessageHandler handler,
-            int maxAttempts = 3)
+            int maxAttempts)
         {
             return new XrayCommandsRepository(NewGraphQlClient(handler, maxAttempts));
         }

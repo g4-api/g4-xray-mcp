@@ -7,7 +7,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Xpandit.Client;
 using Xpandit.Client.Exceptions;
 using Xpandit.Client.Internal;
 using Xpandit.Client.Models;
@@ -57,7 +56,9 @@ namespace Xpandit.Client.Repositories
         /// </remarks>
         public XrayCommandsRepository(XrayGraphQlClient client)
         {
-            ArgumentNullException.ThrowIfNull(client);
+            ArgumentNullException.ThrowIfNull(
+                argument: client,
+                paramName: nameof(client));
 
             // Retain the caller-owned client so every command shares its cached token and retry lifecycle.
             _client = client;
@@ -67,14 +68,21 @@ namespace Xpandit.Client.Repositories
         #region *** Methods      ***
         /// <inheritdoc />
         public async Task<XrayTestStepResult> AddTestStepAsync(
-            AddTestStepRequest request,
-            CancellationToken cancellationToken = default)
+            AddTestStepRequest request)
         {
-            ArgumentNullException.ThrowIfNull(request);
-            ArgumentNullException.ThrowIfNull(request.Step);
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await AddTestStepAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
 
-            // Validate the numeric Test identity before authentication so invalid local input causes no remote work.
-            ConfirmNumericId(request.IssueId, nameof(request.IssueId));
+        /// <inheritdoc />
+        public async Task<XrayTestStepResult> AddTestStepAsync(
+            AddTestStepRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate the complete add-step contract before allocating GraphQL request data.
+            AssertArguments(request);
 
             // Include only meaningful optional values so Xray applies its default Test version and field semantics.
             var variables = new Dictionary<string, object>
@@ -82,13 +90,6 @@ namespace Xpandit.Client.Repositories
                 ["issueId"] = request.IssueId,
                 ["step"] = GetStepInput(request.Step)
             };
-
-            if (request.VersionId < 0)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(request),
-                    "VersionId cannot be negative.");
-            }
 
             if (request.VersionId > 0)
             {
@@ -105,17 +106,54 @@ namespace Xpandit.Client.Repositories
             // Map the persisted step so callers can use its returned identifier in later updates.
             var stepElement = GetRequiredProperty(data, "addTestStep", "AddTestStep");
             return GetTestStepResult(stepElement);
+
+            // Validates the Test identity, nested step definition, and optional version before remote work begins.
+            // Nested member failures name the owning request while their messages identify the invalid value.
+            static void AssertArguments(AddTestStepRequest request)
+            {
+                // Require the parent command before reading its Test identity or nested step definition.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require the nested step model because it owns every serialized manual-step field.
+                if (request.Step is null)
+                {
+                    var message = "Add Test Step request step cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                ConfirmNumericId(
+                    request.IssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.IssueId));
+
+                // Allow omitted and positive versions while rejecting values that Xray cannot resolve.
+                if (request.VersionId < 0)
+                {
+                    var message = "Add Test Step request VersionId cannot be negative.";
+                    throw new ArgumentOutOfRangeException(nameof(request), message);
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayFolder> GetFoldersAsync(
+            GetFoldersRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await GetFoldersAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
         public async Task<XrayFolder> GetFoldersAsync(
             GetFoldersRequest request,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(request);
-
-            // Normalize and validate repository context before querying the recursive testing tree.
-            ConfirmNumericId(request.ProjectId, nameof(request.ProjectId));
+            // Validate repository context before normalizing the requested path.
+            AssertArguments(request);
             var path = GetNormalizedPath(request.Path, allowRoot: true);
 
             // Preserve a null response for absent paths so callers can decide whether to create them.
@@ -124,6 +162,20 @@ namespace Xpandit.Client.Repositories
                 request.ProjectId,
                 path,
                 cancellationToken).ConfigureAwait(false);
+
+            // Validates the request and numeric project identity before the parent method reads repository context.
+            // The nested project member is reported against the owning request parameter for CA2208 compliance.
+            static void AssertArguments(GetFoldersRequest request)
+            {
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                ConfirmNumericId(
+                    request.ProjectId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.ProjectId));
+            }
         }
 
         /// <inheritdoc />
@@ -169,7 +221,8 @@ namespace Xpandit.Client.Repositories
 
             if (testRunElement.ValueKind != JsonValueKind.Object)
             {
-                throw new XpanditClientException("Xray operation 'GetTestRun' returned an invalid Test Run response.");
+                var message = "Xray operation 'GetTestRun' returned an invalid Test Run response.";
+                throw new XpanditClientException(message);
             }
 
             // Map the detached execution snapshot so later mutations can use its opaque run and step identifiers.
@@ -198,13 +251,21 @@ namespace Xpandit.Client.Repositories
 
         /// <inheritdoc />
         public async Task<XrayCommandResult> MoveTestToFolderAsync(
-            MoveTestToFolderRequest request,
-            CancellationToken cancellationToken = default)
+            MoveTestToFolderRequest request)
         {
-            ArgumentNullException.ThrowIfNull(request);
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await MoveTestToFolderAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
 
+        /// <inheritdoc />
+        public async Task<XrayCommandResult> MoveTestToFolderAsync(
+            MoveTestToFolderRequest request,
+            CancellationToken cancellationToken)
+        {
             // Validate and normalize both parts before changing the Test's single repository location.
-            ConfirmNumericId(request.IssueId, nameof(request.IssueId));
+            AssertArguments(request);
             var path = GetNormalizedPath(request.Path, allowRoot: true);
             var variables = new
             {
@@ -220,17 +281,39 @@ namespace Xpandit.Client.Repositories
                 cancellationToken).ConfigureAwait(false);
 
             return new XrayCommandResult();
+
+            // Validates the request and numeric Test identity before the parent method normalizes its destination.
+            // The nested issue member is reported against the owning request parameter for CA2208 compliance.
+            static void AssertArguments(MoveTestToFolderRequest request)
+            {
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                ConfirmNumericId(
+                    request.IssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.IssueId));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayFolder> NewFolderAsync(
+            NewFolderRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await NewFolderAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
         public async Task<XrayFolder> NewFolderAsync(
             NewFolderRequest request,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(request);
-
-            // Normalize the complete destination once so discovery and every cumulative mutation share one path form.
-            ConfirmNumericId(request.ProjectId, nameof(request.ProjectId));
+            // Validate and normalize the destination once so every cumulative mutation shares one path form.
+            AssertArguments(request);
             var targetPath = GetNormalizedPath(request.Path, allowRoot: true);
 
             // Read the full tree once so existing segments are preserved without issuing redundant create mutations.
@@ -282,32 +365,59 @@ namespace Xpandit.Client.Repositories
                 targetPath,
                 cancellationToken).ConfigureAwait(false);
 
-            return folder ?? throw new XpanditClientException(
-                $"Xray did not return folder '{targetPath}' after creating its missing path segments.");
+            if (folder is null)
+            {
+                var message = $"Xray did not return folder '{targetPath}' " +
+                    "after creating its missing path segments.";
+                throw new XpanditClientException(message);
+            }
+
+            return folder;
+
+            // Validates the request and numeric project identity before the parent method reads repository state.
+            // The nested project member is reported against the owning request parameter for CA2208 compliance.
+            static void AssertArguments(NewFolderRequest request)
+            {
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                ConfirmNumericId(
+                    request.ProjectId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.ProjectId));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCreatedTestResult> NewTestAsync(
+            NewTestRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await NewTestAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
         public async Task<XrayCreatedTestResult> NewTestAsync(
             NewTestRequest request,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(argument: request, paramName: nameof(request));
-
-            ArgumentNullException.ThrowIfNull(request);
-            ArgumentNullException.ThrowIfNull(request.Jira);
-            ArgumentNullException.ThrowIfNull(request.Steps);
-            ArgumentException.ThrowIfNullOrWhiteSpace(request.TestTypeName);
+            // Validate the complete Test creation contract before normalizing mutation data.
+            AssertArguments(request);
 
             // Normalize the Test type and every sparse step before entering the remote creation lifecycle.
             var testTypeName = request.TestTypeName.Trim();
             var steps = new List<object>(request.Steps.Count);
 
+            // Preserve caller order while converting each validated model into Xray's sparse step input.
             foreach (var step in request.Steps)
             {
-                ArgumentNullException.ThrowIfNull(step);
                 steps.Add(GetStepInput(step));
             }
 
+            // Combine Jira fields, the normalized Test type, and ordered steps into one atomic creation request.
             var variables = new Dictionary<string, object>
             {
                 ["jira"] = GetJiraInput(request.Jira),
@@ -332,7 +442,8 @@ namespace Xpandit.Client.Repositories
 
             if (string.IsNullOrWhiteSpace(result.Key))
             {
-                throw new XpanditClientException("Xray operation 'NewTest' did not return a Jira issue key.");
+                var message = "Xray operation 'NewTest' did not return a Jira issue key.";
+                throw new XpanditClientException(message);
             }
 
             var testType = GetRequiredProperty(test, "testType", "NewTest");
@@ -340,8 +451,9 @@ namespace Xpandit.Client.Repositories
 
             if (!string.Equals(returnedTestTypeName, testTypeName, StringComparison.OrdinalIgnoreCase))
             {
-                throw new XpanditClientException(
-                    $"Xray operation 'NewTest' returned Test type '{returnedTestTypeName}' instead of '{testTypeName}'.");
+                var message = $"Xray operation 'NewTest' returned Test type " +
+                    $"'{returnedTestTypeName}' instead of '{testTypeName}'.";
+                throw new XpanditClientException(message);
             }
 
             var persistedSteps = GetTestStepResults(test, "NewTest");
@@ -362,15 +474,67 @@ namespace Xpandit.Client.Repositories
                 TestTypeName = returnedTestTypeName,
                 Warnings = result.Warnings
             };
+
+            // Validates every required creation value before the parent method allocates GraphQL mutation data.
+            // Nested failures name the owning request parameter while messages identify their exact model member.
+            static void AssertArguments(NewTestRequest request)
+            {
+                // Require the parent command before inspecting its Jira and Xray Test definition.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require both nested creation collections before mutation data is allocated.
+                if (request.Jira is null)
+                {
+                    var message = "New Test request Jira definition cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                if (request.Steps is null)
+                {
+                    var message = "New Test request steps cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                // Require a meaningful Xray Test type before trimming it for response comparison.
+                if (string.IsNullOrWhiteSpace(request.TestTypeName))
+                {
+                    var message = "New Test request TestTypeName cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                // Reject null step entries because their collection position carries ordering semantics.
+                foreach (var step in request.Steps)
+                {
+                    if (step is not null)
+                    {
+                        continue;
+                    }
+
+                    var message = "New Test request steps cannot contain null values.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestExecutionResult> NewTestExecutionAsync(
+            NewTestExecutionRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await NewTestExecutionAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
         public async Task<XrayTestExecutionResult> NewTestExecutionAsync(
             NewTestExecutionRequest request,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(request);
-            ArgumentNullException.ThrowIfNull(request.Jira);
+            // Validate the creation contract before preparing optional Test and environment associations.
+            AssertArguments(request);
 
             // Validate optional associations independently so invalid values never create a partial Jira issue.
             var testIssueIds = GetOptionalNumericIds(request.TestIssueIds, nameof(request.TestIssueIds));
@@ -402,15 +566,42 @@ namespace Xpandit.Client.Repositories
                 Key = result.Key,
                 Warnings = result.Warnings
             };
+
+            // Validates required Test Execution creation values before the parent method prepares mutation data.
+            // An absent nested Jira definition is reported against the owning public request parameter.
+            static void AssertArguments(NewTestExecutionRequest request)
+            {
+                // Require the parent command before inspecting its Jira creation definition.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require Jira fields because Xray creates the owning issue inside this mutation.
+                if (request.Jira is null)
+                {
+                    var message = "New Test Execution request Jira definition cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCreatedIssueResult> NewTestPlanAsync(
+            NewTestPlanRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await NewTestPlanAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
         public async Task<XrayCreatedIssueResult> NewTestPlanAsync(
             NewTestPlanRequest request,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(request);
-            ArgumentNullException.ThrowIfNull(request.Jira);
+            // Validate the creation contract before preparing Jira fields and optional Test associations.
+            AssertArguments(request);
 
             // Prepare validated Jira fields and optional Test associations before entering the remote lifecycle.
             var testIssueIds = GetOptionalNumericIds(request.TestIssueIds, nameof(request.TestIssueIds));
@@ -429,15 +620,42 @@ namespace Xpandit.Client.Repositories
 
             var payload = GetRequiredProperty(data, "createTestPlan", "NewTestPlan");
             return GetCreatedIssueResult(payload, "testPlan", "NewTestPlan");
+
+            // Validates required Test Plan creation values before the parent method prepares mutation data.
+            // An absent nested Jira definition is reported against the owning public request parameter.
+            static void AssertArguments(NewTestPlanRequest request)
+            {
+                // Require the parent command before inspecting its Jira creation definition.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require Jira fields because Xray creates the owning issue inside this mutation.
+                if (request.Jira is null)
+                {
+                    var message = "New Test Plan request Jira definition cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCreatedIssueResult> NewTestSetAsync(
+            NewTestSetRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await NewTestSetAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
         public async Task<XrayCreatedIssueResult> NewTestSetAsync(
             NewTestSetRequest request,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken)
         {
-            ArgumentNullException.ThrowIfNull(request);
-            ArgumentNullException.ThrowIfNull(request.Jira);
+            // Validate the creation contract before preparing Jira fields and optional Test associations.
+            AssertArguments(request);
 
             // Prepare validated Jira fields and optional Test associations before entering the remote lifecycle.
             var testIssueIds = GetOptionalNumericIds(request.TestIssueIds, nameof(request.TestIssueIds));
@@ -456,21 +674,50 @@ namespace Xpandit.Client.Repositories
 
             var payload = GetRequiredProperty(data, "createTestSet", "NewTestSet");
             return GetCreatedIssueResult(payload, "testSet", "NewTestSet");
+
+            // Validates required Test Set creation values before the parent method prepares mutation data.
+            // An absent nested Jira definition is reported against the owning public request parameter.
+            static void AssertArguments(NewTestSetRequest request)
+            {
+                // Require the parent command before inspecting its Jira creation definition.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require Jira fields because Xray creates the owning issue inside this mutation.
+                if (request.Jira is null)
+                {
+                    var message = "New Test Set request Jira definition cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<string> ResolveTestIssueIdAsync(
+            string issueKey)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await ResolveTestIssueIdAsync(
+                issueKey,
+                cancellationToken: default).ConfigureAwait(false);
         }
 
         /// <inheritdoc />
         public async Task<string> ResolveTestIssueIdAsync(
             string issueKey,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(issueKey);
+            ArgumentException.ThrowIfNullOrWhiteSpace(
+                argument: issueKey,
+                paramName: nameof(issueKey));
+
             issueKey = issueKey.Trim();
 
             if (!JiraIssueKeyPattern.IsMatch(issueKey))
             {
-                throw new ArgumentException(
-                    "The Jira issue key must contain a project key and positive issue number.",
-                    nameof(issueKey));
+                var message = "The Jira issue key must contain a project key and positive issue number.";
+                throw new ArgumentException(message, nameof(issueKey));
             }
 
             // Pass JQL as a GraphQL variable so the issue key never changes the query document structure.
@@ -493,13 +740,14 @@ namespace Xpandit.Client.Repositories
                 resultsElement.ValueKind != JsonValueKind.Array ||
                 resultsElement.GetArrayLength() == 0)
             {
-                throw new KeyNotFoundException($"No Xray Test was found for Jira issue key '{issueKey}'.");
+                var message = $"No Xray Test was found for Jira issue key '{issueKey}'.";
+                throw new KeyNotFoundException(message);
             }
 
             if (total > 1 || resultsElement.GetArrayLength() > 1)
             {
-                throw new InvalidOperationException(
-                    $"More than one Xray Test was returned for Jira issue key '{issueKey}'.");
+                var message = $"More than one Xray Test was returned for Jira issue key '{issueKey}'.";
+                throw new InvalidOperationException(message);
             }
 
             var issueId = GetOptionalString(resultsElement[0], "issueId");
@@ -597,12 +845,21 @@ namespace Xpandit.Client.Repositories
 
         /// <inheritdoc />
         public async Task<XrayCommandResult> UpdateTestStepAsync(
-            UpdateTestStepRequest request,
-            CancellationToken cancellationToken = default)
+            UpdateTestStepRequest request)
         {
-            ArgumentNullException.ThrowIfNull(request);
-            ArgumentNullException.ThrowIfNull(request.Step);
-            ArgumentException.ThrowIfNullOrWhiteSpace(request.StepId);
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await UpdateTestStepAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCommandResult> UpdateTestStepAsync(
+            UpdateTestStepRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate the step identity and sparse update before constructing GraphQL mutation data.
+            AssertArguments(request);
 
             // Convert only caller-selected fields so omitted values remain unchanged in Xray.
             var variables = new
@@ -623,6 +880,29 @@ namespace Xpandit.Client.Repositories
             {
                 Warnings = GetStringCollection(payload, "warnings")
             };
+
+            // Validates all required update values before the parent method constructs its GraphQL variables.
+            // Nested failures name the owning request parameter while messages identify their exact member.
+            static void AssertArguments(UpdateTestStepRequest request)
+            {
+                // Require the parent command before reading its step identity or sparse update model.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require both nested update values before constructing GraphQL mutation variables.
+                if (request.Step is null)
+                {
+                    var message = "Update Test Step request step cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                if (string.IsNullOrWhiteSpace(request.StepId))
+                {
+                    var message = "Update Test Step request StepId cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
         }
 
         // Recursively scans Xray's schema-free child JSON and indexes every documented path value.
@@ -750,7 +1030,8 @@ namespace Xpandit.Client.Repositories
 
             if (folderElement.ValueKind != JsonValueKind.Object)
             {
-                throw new XpanditClientException("Xray returned an invalid folder response.");
+                var message = "Xray returned an invalid folder response.";
+                throw new XpanditClientException(message);
             }
 
             return GetFolderResult(folderElement);
@@ -781,27 +1062,22 @@ namespace Xpandit.Client.Repositories
         // Creates the GraphQL JSON scalar expected by Xray while keeping core Jira fields authoritative.
         private static Dictionary<string, object> GetJiraInput(XrayJiraIssue jira)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(jira.ProjectKey);
-            ArgumentException.ThrowIfNullOrWhiteSpace(jira.Summary);
+            AssertArguments(jira);
 
+            // Normalize optional extension fields so request mapping follows one linear collection workflow.
+            jira.AdditionalFields ??= new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             var fields = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             var additionalFields = jira.AdditionalFields;
 
-            if (additionalFields is null)
-            {
-                // Report the invalid nested Jira state against its owning parameter so CA2208 remains satisfied.
-                var message = "Jira additional fields cannot be null.";
-                throw new ArgumentException(message, nameof(jira));
-            }
-
+            // Copy extension fields only after rejecting names owned by the strongly typed Jira contract.
             foreach (var field in additionalFields)
             {
                 if (string.Equals(field.Key, "project", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(field.Key, "summary", StringComparison.OrdinalIgnoreCase))
                 {
-                    throw new ArgumentException(
-                        $"Additional Jira field '{field.Key}' conflicts with a strongly typed field.",
-                        nameof(jira));
+                    var message = $"Additional Jira field '{field.Key}' " +
+                        "conflicts with a strongly typed field.";
+                    throw new ArgumentException(message, nameof(jira));
                 }
 
                 fields[field.Key] = field.Value;
@@ -818,12 +1094,37 @@ namespace Xpandit.Client.Repositories
             {
                 ["fields"] = fields
             };
+
+            // Validates the Jira definition before the parent method normalizes and copies extension fields.
+            // Nested project and summary failures name their owning parameter for CA2208-safe diagnostics.
+            static void AssertArguments(XrayJiraIssue jira)
+            {
+                // Require the Jira definition before reading its core issue fields.
+                ArgumentNullException.ThrowIfNull(
+                    argument: jira,
+                    paramName: nameof(jira));
+
+                // Require both strongly typed fields that every Xray Jira creation input consumes.
+                if (string.IsNullOrWhiteSpace(jira.ProjectKey))
+                {
+                    var message = "Jira ProjectKey cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(jira));
+                }
+
+                if (string.IsNullOrWhiteSpace(jira.Summary))
+                {
+                    var message = "Jira Summary cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(jira));
+                }
+            }
         }
 
         // Normalizes separators and rejects traversal segments that have no meaning in an Xray repository path.
         private static string GetNormalizedPath(string path, bool allowRoot)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(path);
+            ArgumentException.ThrowIfNullOrWhiteSpace(
+                argument: path,
+                paramName: nameof(path));
 
             var segments = path
                 .Replace('\\', '/')
@@ -831,7 +1132,8 @@ namespace Xpandit.Client.Repositories
 
             if (segments.Any(segment => segment is "." or ".."))
             {
-                throw new ArgumentException("Folder paths cannot contain traversal segments.", nameof(path));
+                var message = "Folder paths cannot contain traversal segments.";
+                throw new ArgumentException(message, nameof(path));
             }
 
             var normalizedPath = segments.Length == 0
@@ -840,7 +1142,8 @@ namespace Xpandit.Client.Repositories
 
             if (!allowRoot && normalizedPath == "/")
             {
-                throw new ArgumentException("The repository root is not valid for this command.", nameof(path));
+                var message = "The repository root is not valid for this command.";
+                throw new ArgumentException(message, nameof(path));
             }
 
             return normalizedPath;
@@ -889,7 +1192,8 @@ namespace Xpandit.Client.Repositories
             {
                 if (string.IsNullOrWhiteSpace(value))
                 {
-                    throw new ArgumentException("Collection values cannot be null or whitespace.", parameterName);
+                    var message = "Collection values cannot be null or whitespace.";
+                    throw new ArgumentException(message, parameterName);
                 }
 
                 if (uniqueValues.Add(value))
@@ -928,8 +1232,8 @@ namespace Xpandit.Client.Repositories
             if (!element.TryGetProperty(propertyName, out var propertyElement) ||
                 propertyElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
             {
-                throw new XpanditClientException(
-                    $"Xray operation '{operationName}' did not return '{propertyName}'.");
+                var message = $"Xray operation '{operationName}' did not return '{propertyName}'.";
+                throw new XpanditClientException(message);
             }
 
             return propertyElement;
@@ -1004,7 +1308,8 @@ namespace Xpandit.Client.Repositories
 
             if (update.Count == 0)
             {
-                throw new ArgumentException("At least one test-step field must be selected for update.", nameof(step));
+                var message = "At least one test-step field must be selected for update.";
+                throw new ArgumentException(message, nameof(step));
             }
 
             return update;
@@ -1049,7 +1354,8 @@ namespace Xpandit.Client.Repositories
 
             if (string.IsNullOrWhiteSpace(testRunId))
             {
-                throw new XpanditClientException("Xray operation 'GetTestRun' did not return a Test Run identifier.");
+                var message = "Xray operation 'GetTestRun' did not return a Test Run identifier.";
+                throw new XpanditClientException(message);
             }
 
             // Require both owning Jira issues so callers can retain the composite lookup identity with the snapshot.
@@ -1090,7 +1396,8 @@ namespace Xpandit.Client.Repositories
 
             if (string.IsNullOrWhiteSpace(stepId))
             {
-                throw new XpanditClientException("Xray operation 'GetTestRun' returned a step without an identifier.");
+                var message = "Xray operation 'GetTestRun' returned a step without an identifier.";
+                throw new XpanditClientException(message);
             }
 
             return new XrayTestRunStepResult
@@ -1112,7 +1419,8 @@ namespace Xpandit.Client.Repositories
 
             if (stepsElement.ValueKind != JsonValueKind.Array)
             {
-                throw new XpanditClientException("Xray operation 'GetTestRun' did not return a run-step array.");
+                var message = "Xray operation 'GetTestRun' did not return a run-step array.";
+                throw new XpanditClientException(message);
             }
 
             var steps = new List<XrayTestRunStepResult>(stepsElement.GetArrayLength());
@@ -1157,9 +1465,8 @@ namespace Xpandit.Client.Repositories
 
             if (updateData.Count == 0)
             {
-                throw new ArgumentException(
-                    "At least one Test Run Step field must be selected for update.",
-                    nameof(update));
+                var message = "At least one Test Run Step field must be selected for update.";
+                throw new ArgumentException(message, nameof(update));
             }
 
             return updateData;
@@ -1209,8 +1516,8 @@ namespace Xpandit.Client.Repositories
 
             if (stepsElement.ValueKind != JsonValueKind.Array)
             {
-                throw new XpanditClientException(
-                    $"Xray operation '{operationName}' did not return a step array.");
+                var message = $"Xray operation '{operationName}' did not return a step array.";
+                throw new XpanditClientException(message);
             }
 
             // Preserve Xray's returned ordering so callers can compare the persisted definition with their request.
@@ -1235,11 +1542,29 @@ namespace Xpandit.Client.Repositories
 
             foreach (var customField in customFields)
             {
-                ArgumentNullException.ThrowIfNull(customField);
-                ArgumentException.ThrowIfNullOrWhiteSpace(customField.Id);
+                AssertCustomField(customField);
             }
 
             return customFields;
+
+            // Validates one custom field before the parent method returns the caller-owned collection to serialization.
+            // Collection-entry failures name the collection parameter because entries are not declared parameters.
+            static void AssertCustomField(XrayCustomStepField customField)
+            {
+                // Require a concrete collection entry before reading its GraphQL field identifier.
+                if (customField is null)
+                {
+                    var message = "Custom fields cannot contain null entries.";
+                    throw new ArgumentException(message, nameof(customFields));
+                }
+
+                // Require an identifier because Xray cannot route a custom value without one.
+                if (string.IsNullOrWhiteSpace(customField.Id))
+                {
+                    var message = "Custom field identifiers cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(customFields));
+                }
+            }
         }
 
         // Creates one missing folder segment and lets GraphQL warnings remain non-fatal for final leaf verification.

@@ -237,7 +237,9 @@ namespace Mcp.Xray.Domain.Repositories
         {
             try
             {
-                ArgumentNullException.ThrowIfNull(testCase);
+                ArgumentNullException.ThrowIfNull(
+                    argument: testCase,
+                    paramName: nameof(testCase));
 
                 // Preserve the Jira description and resolved custom fields inside Xray's Jira creation payload.
                 var additionalFields = new Dictionary<string, object>
@@ -245,8 +247,10 @@ namespace Mcp.Xray.Domain.Repositories
                     ["description"] = testCase.Description
                 };
 
+                // Normalize optional custom fields so resolution follows one linear collection workflow.
                 testCase.CustomFields ??= [];
 
+                // Resolve caller-facing names to Jira field identifiers while ignoring unavailable project fields.
                 foreach (var customField in testCase.CustomFields)
                 {
                     var resolvedField = _jiraClient.GetCustomField(project, customField.Name);
@@ -259,10 +263,17 @@ namespace Mcp.Xray.Domain.Repositories
 
                 // Translate the complete ordered definition before sending so one mutation owns issue registration.
                 var steps = new List<XrayTestStepInput>();
+                testCase.Steps ??= [];
 
-                foreach (var testStep in testCase.Steps ?? [])
+                foreach (var testStep in testCase.Steps)
                 {
-                    ArgumentNullException.ThrowIfNull(testStep);
+                    // Report invalid ordered entries against the owning public test-case parameter.
+                    if (testStep is null)
+                    {
+                        var message = "Test case steps cannot contain null entries.";
+                        throw new ArgumentException(message, nameof(testCase));
+                    }
+
                     steps.Add(new XrayTestStepInput
                     {
                         Action = testStep.Action,
@@ -270,6 +281,7 @@ namespace Mcp.Xray.Domain.Repositories
                     });
                 }
 
+                // Build one Xray creation request containing the Jira issue and complete manual definition.
                 var request = new NewTestRequest
                 {
                     Jira = new XrayJiraIssue
@@ -300,6 +312,8 @@ namespace Mcp.Xray.Domain.Repositories
                     Link = $"{jiraAuthentication.Collection}/browse/{result.Key}",
                     result.Warnings
                 };
+
+                // Serialize and detach the compatibility response before its backing document leaves scope.
                 var jsonResponse = JsonSerializer.Serialize(response, AppSettings.JsonOptions);
                 using var responseDocument = JsonDocument.Parse(jsonResponse);
                 return responseDocument.RootElement.Clone();

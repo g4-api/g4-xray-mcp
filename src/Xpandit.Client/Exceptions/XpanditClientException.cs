@@ -17,7 +17,94 @@ namespace Xpandit.Client.Exceptions
     {
         #region *** Constructors ***
         /// <summary>
-        /// Initializes an Xray client failure with optional protocol and GraphQL diagnostic details.
+        /// Initializes an Xray client failure with a contextual message.
+        /// </summary>
+        /// <param name="message">Contextual description of the failed client operation.</param>
+        public XpanditClientException(string message)
+            : this(
+                  message,
+                  statusCode: default,
+                  responseBody: null,
+                  errors: null,
+                  innerException: null)
+        { }
+
+        /// <summary>
+        /// Initializes an Xray client failure with a contextual message and underlying exception.
+        /// </summary>
+        /// <param name="message">Contextual description of the failed client operation.</param>
+        /// <param name="innerException">Underlying transport or serialization failure.</param>
+        public XpanditClientException(
+            string message,
+            Exception innerException)
+            : this(
+                  message,
+                  statusCode: default,
+                  responseBody: null,
+                  errors: null,
+                  innerException)
+        { }
+
+        /// <summary>
+        /// Initializes an Xray client failure with HTTP diagnostics.
+        /// </summary>
+        /// <param name="message">Contextual description of the failed client operation.</param>
+        /// <param name="statusCode">HTTP status returned by Xray, or the enum default when no response was received.</param>
+        /// <param name="responseBody">Response content safe for caller diagnostics.</param>
+        public XpanditClientException(
+            string message,
+            HttpStatusCode statusCode,
+            string responseBody)
+            : this(
+                  message,
+                  statusCode,
+                  responseBody,
+                  errors: null,
+                  innerException: null)
+        { }
+
+        /// <summary>
+        /// Initializes an Xray client failure with HTTP diagnostics and an underlying exception.
+        /// </summary>
+        /// <param name="message">Contextual description of the failed client operation.</param>
+        /// <param name="statusCode">HTTP status returned by Xray, or the enum default when no response was received.</param>
+        /// <param name="responseBody">Response content safe for caller diagnostics.</param>
+        /// <param name="innerException">Underlying transport or serialization failure.</param>
+        public XpanditClientException(
+            string message,
+            HttpStatusCode statusCode,
+            string responseBody,
+            Exception innerException)
+            : this(
+                  message,
+                  statusCode,
+                  responseBody,
+                  errors: null,
+                  innerException)
+        { }
+
+        /// <summary>
+        /// Initializes an Xray client failure with HTTP and GraphQL diagnostics.
+        /// </summary>
+        /// <param name="message">Contextual description of the failed client operation.</param>
+        /// <param name="statusCode">HTTP status returned by Xray, or the enum default when no response was received.</param>
+        /// <param name="responseBody">Response content safe for caller diagnostics.</param>
+        /// <param name="errors">GraphQL errors returned with a successful HTTP response.</param>
+        public XpanditClientException(
+            string message,
+            HttpStatusCode statusCode,
+            string responseBody,
+            IReadOnlyCollection<XrayGraphQlError> errors)
+            : this(
+                  message,
+                  statusCode,
+                  responseBody,
+                  errors,
+                  innerException: null)
+        { }
+
+        /// <summary>
+        /// Initializes an Xray client failure with complete protocol and GraphQL diagnostic details.
         /// </summary>
         /// <param name="message">Contextual description of the failed client operation.</param>
         /// <param name="statusCode">HTTP status returned by Xray, or the enum default when no response was received.</param>
@@ -26,10 +113,10 @@ namespace Xpandit.Client.Exceptions
         /// <param name="innerException">Underlying transport or serialization failure, or null when absent.</param>
         public XpanditClientException(
             string message,
-            HttpStatusCode statusCode = default,
-            string responseBody = null,
-            IReadOnlyCollection<XrayGraphQlError> errors = null,
-            Exception innerException = null)
+            HttpStatusCode statusCode,
+            string responseBody,
+            IReadOnlyCollection<XrayGraphQlError> errors,
+            Exception innerException)
             : base(message, innerException)
         {
             Errors = errors ?? [];
