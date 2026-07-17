@@ -127,6 +127,74 @@ namespace Xpandit.Client.Repositories
         }
 
         /// <inheritdoc />
+        public async Task<XrayTestRunResult> GetTestRunAsync(
+            GetTestRunRequest request)
+        {
+            // Route convenience callers through the cancellation-aware operation with no external cancellation.
+            return await GetTestRunAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestRunResult> GetTestRunAsync(
+            GetTestRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert both issue identities before authentication so invalid local input causes no remote work.
+            AssertArguments(request);
+
+            // Preserve the composite Test and Test Execution identity expected by Xray's Test Run lookup.
+            var variables = new
+            {
+                testIssueId = request.TestIssueId,
+                testExecutionIssueId = request.TestExecutionIssueId
+            };
+
+            // Resolve the execution snapshot through the shared authentication and repeatable-send lifecycle.
+            var data = await _client.InvokeAsync(
+                operationName: "GetTestRun",
+                query: XrayGraphQlDocuments.GetTestRun,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Distinguish an absent Test Run from an incompatible GraphQL response so callers can report not-found state.
+            if (!data.TryGetProperty("getTestRun", out var testRunElement) ||
+                testRunElement.ValueKind == JsonValueKind.Null)
+            {
+                var message = $"No Xray Test Run was found for Test '{request.TestIssueId}' " +
+                    $"inside Test Execution '{request.TestExecutionIssueId}'.";
+                throw new KeyNotFoundException(message);
+            }
+
+            if (testRunElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new XpanditClientException("Xray operation 'GetTestRun' returned an invalid Test Run response.");
+            }
+
+            // Map the detached execution snapshot so later mutations can use its opaque run and step identifiers.
+            return GetTestRunResult(testRunElement);
+
+            // Asserts the composite numeric identity before the parent method allocates GraphQL request state.
+            // The helper does not mutate caller data and reports invalid values through argument exceptions.
+            static void AssertArguments(GetTestRunRequest request)
+            {
+                // Require the request before accessing the two issue identifiers that form the lookup identity.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require positive numeric Jira identifiers because Xray does not accept human-readable keys here.
+                ConfirmNumericId(
+                    request.TestExecutionIssueId,
+                    nameof(request.TestExecutionIssueId));
+                ConfirmNumericId(
+                    request.TestIssueId,
+                    nameof(request.TestIssueId));
+            }
+        }
+
+        /// <inheritdoc />
         public async Task<XrayCommandResult> MoveTestToFolderAsync(
             MoveTestToFolderRequest request,
             CancellationToken cancellationToken = default)
@@ -172,8 +240,8 @@ namespace Xpandit.Client.Repositories
 
             if (rootFolder is null)
             {
-                throw new XpanditClientException(
-                    $"Xray returned no Test Repository root for project '{request.ProjectId}'.");
+                var message = $"Xray returned no Test Repository root for project '{request.ProjectId}'.";
+                throw new XpanditClientException(message);
             }
 
             if (targetPath == "/")
@@ -439,6 +507,84 @@ namespace Xpandit.Client.Repositories
         }
 
         /// <inheritdoc />
+        public async Task<XrayCommandResult> UpdateTestRunStepAsync(
+            UpdateTestRunStepRequest request)
+        {
+            // Route convenience callers through the cancellation-aware operation with no external cancellation.
+            return await UpdateTestRunStepAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCommandResult> UpdateTestRunStepAsync(
+            UpdateTestRunStepRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the complete run-step identity before preparing sparse mutation data.
+            AssertArguments(request);
+
+            // Convert only caller-selected outcome fields so omitted values remain unchanged in Xray.
+            var variables = new Dictionary<string, object>
+            {
+                ["stepId"] = request.StepId,
+                ["testRunId"] = request.TestRunId,
+                ["updateData"] = GetTestRunStepUpdate(request.Update)
+            };
+
+            if (request.IterationRank is not null)
+            {
+                // Include iteration context only for data-driven runs so ordinary manual steps use the base snapshot.
+                variables["iterationRank"] = request.IterationRank;
+            }
+
+            // Apply the selected execution values through Xray's public Test Run Step mutation.
+            var data = await _client.InvokeAsync(
+                operationName: "UpdateTestRunStep",
+                query: XrayGraphQlDocuments.UpdateTestRunStep,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+            var payload = GetRequiredProperty(data, "updateTestRunStep", "UpdateTestRunStep");
+
+            // Retain non-fatal Xray diagnostics while the caller continues the manual execution cycle.
+            return new XrayCommandResult
+            {
+                Warnings = GetStringCollection(payload, "warnings")
+            };
+
+            // Asserts all required run-step values before the parent method enters the remote mutation lifecycle.
+            // The helper preserves caller state and reports invalid identities or iteration values locally.
+            static void AssertArguments(UpdateTestRunStepRequest request)
+            {
+                // Require the request and sparse update contract before accessing mutation values.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                ArgumentNullException.ThrowIfNull(
+                    argument: request.Update,
+                    paramName: nameof(request.Update));
+
+                // Require Xray's opaque run and step identifiers so the mutation cannot target an unknown entity.
+                ArgumentException.ThrowIfNullOrWhiteSpace(
+                    argument: request.StepId,
+                    paramName: nameof(request.StepId));
+
+                ArgumentException.ThrowIfNullOrWhiteSpace(
+                    argument: request.TestRunId,
+                    paramName: nameof(request.TestRunId));
+
+                if (request.IterationRank is not null)
+                {
+                    // Reject an empty iteration selector because omission and an invalid rank have different meaning.
+                    ArgumentException.ThrowIfNullOrWhiteSpace(
+                        argument: request.IterationRank,
+                        paramName: nameof(request.IterationRank));
+                }
+            }
+        }
+
+        /// <inheritdoc />
         public async Task<XrayCommandResult> UpdateTestStepAsync(
             UpdateTestStepRequest request,
             CancellationToken cancellationToken = default)
@@ -513,9 +659,9 @@ namespace Xpandit.Client.Repositories
 
         // Adds a serialized collection only when it contains values so GraphQL receives null for optional arguments.
         private static void AddOptionalCollection(
-            IDictionary<string, object> variables,
+            Dictionary<string, object> variables,
             string name,
-            IReadOnlyCollection<string> values)
+            List<string> values)
         {
             if (values.Count > 0)
             {
@@ -550,7 +696,7 @@ namespace Xpandit.Client.Repositories
         }
 
         // Expands one normalized path into parent-first cumulative paths for safe recursive creation.
-        private static IReadOnlyCollection<string> GetCumulativePaths(string path)
+        private static List<string> GetCumulativePaths(string path)
         {
             var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
             var paths = new List<string>(segments.Length);
@@ -622,7 +768,7 @@ namespace Xpandit.Client.Repositories
         }
 
         // Creates the GraphQL JSON scalar expected by Xray while keeping core Jira fields authoritative.
-        private static object GetJiraInput(XrayJiraIssue jira)
+        private static Dictionary<string, object> GetJiraInput(XrayJiraIssue jira)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(jira.ProjectKey);
             ArgumentException.ThrowIfNullOrWhiteSpace(jira.Summary);
@@ -684,7 +830,7 @@ namespace Xpandit.Client.Repositories
         }
 
         // Validates optional numeric identifiers, removes exact duplicates, and preserves caller ordering.
-        private static IReadOnlyCollection<string> GetOptionalNumericIds(
+        private static List<string> GetOptionalNumericIds(
             IReadOnlyCollection<string> values,
             string parameterName)
         {
@@ -710,7 +856,7 @@ namespace Xpandit.Client.Repositories
         }
 
         // Validates optional text collections, removes exact duplicates, and preserves caller ordering.
-        private static IReadOnlyCollection<string> GetOptionalStrings(
+        private static List<string> GetOptionalStrings(
             IReadOnlyCollection<string> values,
             string parameterName)
         {
@@ -772,8 +918,20 @@ namespace Xpandit.Client.Repositories
             return propertyElement;
         }
 
+        // Reads an optional Xray status name while preserving absent or incompatible status objects as empty state.
+        private static string GetStatusName(JsonElement element)
+        {
+            if (!element.TryGetProperty("status", out var statusElement) ||
+                statusElement.ValueKind != JsonValueKind.Object)
+            {
+                return string.Empty;
+            }
+
+            return GetOptionalString(statusElement, "name") ?? string.Empty;
+        }
+
         // Converts an add-step model into a sparse GraphQL input while validating custom field identities.
-        private static object GetStepInput(XrayTestStepInput step)
+        private static Dictionary<string, object> GetStepInput(XrayTestStepInput step)
         {
             var input = new Dictionary<string, object>();
 
@@ -803,7 +961,7 @@ namespace Xpandit.Client.Repositories
         }
 
         // Converts a partial step update while retaining the distinction between omitted and explicitly empty values.
-        private static object GetStepUpdate(XrayTestStepUpdate step)
+        private static Dictionary<string, object> GetStepUpdate(XrayTestStepUpdate step)
         {
             var update = new Dictionary<string, object>();
 
@@ -836,7 +994,7 @@ namespace Xpandit.Client.Repositories
         }
 
         // Maps a JSON string array to an immutable caller-facing collection and ignores incompatible values.
-        private static IReadOnlyCollection<string> GetStringCollection(
+        private static List<string> GetStringCollection(
             JsonElement element,
             string propertyName)
         {
@@ -864,6 +1022,118 @@ namespace Xpandit.Client.Repositories
             }
 
             return values;
+        }
+
+        // Maps the execution snapshot into stable run identity and ordered manual steps used by later mutations.
+        private static XrayTestRunResult GetTestRunResult(JsonElement testRunElement)
+        {
+            // Require the opaque run identifier because every execution-result mutation depends on it.
+            var testRunId = GetOptionalString(testRunElement, "id") ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(testRunId))
+            {
+                throw new XpanditClientException("Xray operation 'GetTestRun' did not return a Test Run identifier.");
+            }
+
+            // Require both owning Jira issues so callers can retain the composite lookup identity with the snapshot.
+            var testElement = GetRequiredProperty(testRunElement, "test", "GetTestRun");
+            var testExecutionElement = GetRequiredProperty(testRunElement, "testExecution", "GetTestRun");
+            var testIssueId = GetOptionalString(testElement, "issueId") ?? string.Empty;
+            var testExecutionIssueId = GetOptionalString(testExecutionElement, "issueId") ?? string.Empty;
+            ConfirmNumericId(testIssueId, "GetTestRun.TestIssueId");
+            ConfirmNumericId(testExecutionIssueId, "GetTestRun.TestExecutionIssueId");
+
+            // Preserve Xray's step order so domain callers can map one-based manual step numbers deterministically.
+            var steps = GetTestRunSteps(testRunElement);
+
+            return new XrayTestRunResult
+            {
+                Id = testRunId,
+                Status = GetStatusName(testRunElement),
+                Steps = steps,
+                TestExecutionIssueId = testExecutionIssueId,
+                TestIssueId = testIssueId
+            };
+        }
+
+        // Maps one manual run-step snapshot and rejects responses without the identifier required for later updates.
+        private static XrayTestRunStepResult GetTestRunStepResult(JsonElement stepElement)
+        {
+            var stepId = GetOptionalString(stepElement, "id") ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(stepId))
+            {
+                throw new XpanditClientException("Xray operation 'GetTestRun' returned a step without an identifier.");
+            }
+
+            return new XrayTestRunStepResult
+            {
+                Action = GetOptionalString(stepElement, "action"),
+                ActualResult = GetOptionalString(stepElement, "actualResult"),
+                Comment = GetOptionalString(stepElement, "comment"),
+                Data = GetOptionalString(stepElement, "data"),
+                ExpectedResult = GetOptionalString(stepElement, "result"),
+                Id = stepId,
+                Status = GetStatusName(stepElement)
+            };
+        }
+
+        // Maps the complete manual step array while retaining Xray's execution-snapshot ordering.
+        private static List<XrayTestRunStepResult> GetTestRunSteps(JsonElement testRunElement)
+        {
+            var stepsElement = GetRequiredProperty(testRunElement, "steps", "GetTestRun");
+
+            if (stepsElement.ValueKind != JsonValueKind.Array)
+            {
+                throw new XpanditClientException("Xray operation 'GetTestRun' did not return a run-step array.");
+            }
+
+            var steps = new List<XrayTestRunStepResult>(stepsElement.GetArrayLength());
+
+            // Convert every returned snapshot in order so step-number selection remains deterministic downstream.
+            foreach (var stepElement in stepsElement.EnumerateArray())
+            {
+                steps.Add(GetTestRunStepResult(stepElement));
+            }
+
+            return steps;
+        }
+
+        // Converts a manual execution update into sparse GraphQL data while preserving explicit empty text values.
+        private static Dictionary<string, object> GetTestRunStepUpdate(XrayTestRunStepUpdate update)
+        {
+            var updateData = new Dictionary<string, object>();
+
+            if (update.ActualResult is not null)
+            {
+                // Retain an empty actual result because callers can use it to clear a previously recorded outcome.
+                updateData["actualResult"] = update.ActualResult;
+            }
+
+            if (update.Comment is not null)
+            {
+                // Retain an empty comment because callers can use it to clear a previously recorded execution note.
+                updateData["comment"] = update.Comment;
+            }
+
+            if (update.Status is not null)
+            {
+                // Require a meaningful Xray status name or identifier before adding it to the sparse mutation data.
+                ArgumentException.ThrowIfNullOrWhiteSpace(
+                    argument: update.Status,
+                    paramName: nameof(update.Status));
+
+                updateData["status"] = update.Status;
+            }
+
+            if (updateData.Count == 0)
+            {
+                throw new ArgumentException(
+                    "At least one Test Run Step field must be selected for update.",
+                    nameof(update));
+            }
+
+            return updateData;
         }
 
         // Maps the add-step payload into the documented public response and preserves custom JSON values.
@@ -902,7 +1172,7 @@ namespace Xpandit.Client.Repositories
         }
 
         // Maps the complete step array selected by Test creation and rejects missing or incompatible response data.
-        private static IReadOnlyCollection<XrayTestStepResult> GetTestStepResults(
+        private static List<XrayTestStepResult> GetTestStepResults(
             JsonElement testElement,
             string operationName)
         {

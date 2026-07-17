@@ -37,6 +37,26 @@ namespace Xpandit.Client.Repositories
             CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Gets the manual Test Run identified by its Test and Test Execution issues without caller cancellation.
+        /// </summary>
+        /// <param name="request">Numeric Jira issue identifiers that form the Xray Test Run identity.</param>
+        /// <returns>The Test Run identity, status, and ordered manual step snapshots.</returns>
+        /// <exception cref="KeyNotFoundException">Thrown when Xray has no Test Run for the supplied issues.</exception>
+        Task<XrayTestRunResult> GetTestRunAsync(
+            GetTestRunRequest request);
+
+        /// <summary>
+        /// Gets the manual Test Run identified by its Test and Test Execution issues with caller cancellation.
+        /// </summary>
+        /// <param name="request">Numeric Jira issue identifiers that form the Xray Test Run identity.</param>
+        /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
+        /// <returns>The Test Run identity, status, and ordered manual step snapshots.</returns>
+        /// <exception cref="KeyNotFoundException">Thrown when Xray has no Test Run for the supplied issues.</exception>
+        Task<XrayTestRunResult> GetTestRunAsync(
+            GetTestRunRequest request,
+            CancellationToken cancellationToken);
+
+        /// <summary>
         /// Moves an existing Test to an existing Test Repository folder.
         /// </summary>
         /// <param name="request">Numeric Test ID and normalized destination path.</param>
@@ -106,6 +126,24 @@ namespace Xpandit.Client.Repositories
         Task<string> ResolveTestIssueIdAsync(
             string issueKey,
             CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Applies sparse manual execution values to one Test Run Step without caller cancellation.
+        /// </summary>
+        /// <param name="request">Opaque Test Run identities, optional iteration rank, and selected outcome values.</param>
+        /// <returns>Command warnings; an empty collection represents a clean mutation.</returns>
+        Task<XrayCommandResult> UpdateTestRunStepAsync(
+            UpdateTestRunStepRequest request);
+
+        /// <summary>
+        /// Applies sparse manual execution values to one Test Run Step with caller cancellation.
+        /// </summary>
+        /// <param name="request">Opaque Test Run identities, optional iteration rank, and selected outcome values.</param>
+        /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
+        /// <returns>Command warnings; an empty collection represents a clean mutation.</returns>
+        Task<XrayCommandResult> UpdateTestRunStepAsync(
+            UpdateTestRunStepRequest request,
+            CancellationToken cancellationToken);
 
         /// <summary>
         /// Applies a partial update to an existing Xray manual test step.

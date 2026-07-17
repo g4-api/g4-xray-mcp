@@ -14,6 +14,12 @@ namespace Xpandit.Client.Internal
             "getFolder(projectId: $projectId, path: $path) { " +
             "name path issuesCount testsCount preconditionsCount folders } }";
 
+        internal const string GetTestRun =
+            "query GetTestRun($testIssueId: String!, $testExecutionIssueId: String!) { " +
+            "getTestRun(testIssueId: $testIssueId, testExecIssueId: $testExecutionIssueId) { " +
+            "id status { name } test { issueId } testExecution { issueId } steps { " +
+            "id action data result actualResult comment status { name } } } }";
+
         internal const string MoveTestToFolder =
             "mutation MoveTestToFolder($issueId: String!, $folderPath: String!) { " +
             "updateTestFolder(issueId: $issueId, folderPath: $folderPath) }";
@@ -47,6 +53,12 @@ namespace Xpandit.Client.Internal
         internal const string ResolveTestIssueId =
             "query ResolveTestIssueId($jql: String!) { " +
             "getTests(jql: $jql, limit: 2) { total results { issueId jira(fields: [\"key\"]) } } }";
+
+        internal const string UpdateTestRunStep =
+            "mutation UpdateTestRunStep($testRunId: String!, $stepId: String!, " +
+            "$updateData: UpdateTestRunStepInput!, $iterationRank: String) { " +
+            "updateTestRunStep(testRunId: $testRunId, stepId: $stepId, " +
+            "updateData: $updateData, iterationRank: $iterationRank) { warnings } }";
 
         internal const string UpdateTestStep =
             "mutation UpdateTestStep($stepId: String!, $step: UpdateStepInput!) { " +

@@ -199,6 +199,97 @@ namespace Xpandit.Client.UnitTests
             CollectionAssert.AreEqual(new[] { "getFolder" }, exception.Errors.Single().Path.ToArray());
         }
 
+        [TestMethod(DisplayName = "Verify that GetTestRun maps manual step identities and recorded outcomes.")]
+        public async Task GetTestRunMapsManualStepsTestAsync()
+        {
+            // Arrange: queue a complete manual Test Run snapshot behind one successful authentication response.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\n" +
+                "    \"data\": {\n" +
+                "        \"getTestRun\": {\n" +
+                "            \"id\": \"run-1\",\n" +
+                "            \"status\": {\"name\": \"EXECUTING\"},\n" +
+                "            \"test\": {\"issueId\": \"10097\"},\n" +
+                "            \"testExecution\": {\"issueId\": \"20003\"},\n" +
+                "            \"steps\": [\n" +
+                "                {\n" +
+                "                    \"id\": \"run-step-1\",\n" +
+                "                    \"action\": \"Open page\",\n" +
+                "                    \"data\": \"Chrome\",\n" +
+                "                    \"result\": \"Page opens\",\n" +
+                "                    \"actualResult\": \"Page opened\",\n" +
+                "                    \"comment\": \"Observed manually\",\n" +
+                "                    \"status\": {\"name\": \"PASSED\"}\n" +
+                "                },\n" +
+                "                {\n" +
+                "                    \"id\": \"run-step-2\",\n" +
+                "                    \"action\": \"Sign in\",\n" +
+                "                    \"data\": null,\n" +
+                "                    \"result\": \"Dashboard opens\",\n" +
+                "                    \"actualResult\": null,\n" +
+                "                    \"comment\": null,\n" +
+                "                    \"status\": {\"name\": \"TODO\"}\n" +
+                "                }\n" +
+                "            ]\n" +
+                "        }\n" +
+                "    }\n" +
+                "}");
+            var repository = NewRepository(handler);
+
+            // Act: resolve the run through the public composite-identity command used by domain orchestration.
+            var result = await repository.GetTestRunAsync(new GetTestRunRequest
+            {
+                TestExecutionIssueId = "20003",
+                TestIssueId = "10097"
+            });
+
+            // Assert: the run retains both owning issue IDs and Xray's opaque mutation identity.
+            Assert.AreEqual("run-1", result.Id);
+            Assert.AreEqual("EXECUTING", result.Status);
+            Assert.AreEqual("20003", result.TestExecutionIssueId);
+            Assert.AreEqual("10097", result.TestIssueId);
+            Assert.AreEqual(2, result.Steps.Count);
+
+            // Assert: expected and actual outcomes remain distinct on the first ordered manual step.
+            var firstStep = result.Steps.First();
+            Assert.AreEqual("run-step-1", firstStep.Id);
+            Assert.AreEqual("Page opens", firstStep.ExpectedResult);
+            Assert.AreEqual("Page opened", firstStep.ActualResult);
+            Assert.AreEqual("Observed manually", firstStep.Comment);
+            Assert.AreEqual("PASSED", firstStep.Status);
+
+            // Assert: GraphQL receives numeric Test and Test Execution identities under their documented variables.
+            using var requestDocument = JsonDocument.Parse(handler.Requests[1].Body);
+            var variables = requestDocument.RootElement.GetProperty("variables");
+            Assert.AreEqual("10097", variables.GetProperty("testIssueId").GetString());
+            Assert.AreEqual("20003", variables.GetProperty("testExecutionIssueId").GetString());
+        }
+
+        [TestMethod(DisplayName = "Verify that GetTestRun reports an absent composite Test Run identity.")]
+        public async Task GetTestRunMissingRunTestAsync()
+        {
+            // Arrange: authenticate successfully and return an explicit null Test Run for the requested issues.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(HttpStatusCode.OK, "{\"data\":{\"getTestRun\":null}}");
+            var repository = NewRepository(handler);
+
+            // Act: capture the not-found contract exposed after Xray completes the composite lookup.
+            var exception = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(async () =>
+                await repository.GetTestRunAsync(new GetTestRunRequest
+                {
+                    TestExecutionIssueId = "20003",
+                    TestIssueId = "10097"
+                }));
+
+            // Assert: the diagnostic retains both issue IDs required to investigate the missing association.
+            StringAssert.Contains(exception.Message, "10097");
+            StringAssert.Contains(exception.Message, "20003");
+        }
+
         [TestMethod(DisplayName = "Verify that move and update commands use normalized paths and sparse step fields.")]
         public async Task MoveAndUpdateCommandsTestAsync()
         {
@@ -589,6 +680,65 @@ namespace Xpandit.Client.UnitTests
             Assert.AreEqual("Bearer token-one", handler.Requests[1].Authorization);
             Assert.AreEqual(new Uri("https://unit.test/authenticate"), handler.Requests[2].Uri);
             Assert.AreEqual("Bearer token-two", handler.Requests[3].Authorization);
+        }
+
+        [TestMethod(DisplayName = "Verify that UpdateTestRunStep rejects an update without selected outcome values.")]
+        public async Task UpdateTestRunStepEmptyUpdateTestAsync()
+        {
+            // Arrange: create an isolated repository without responses because local validation must prevent I/O.
+            var handler = new TestHttpMessageHandler();
+            var repository = NewRepository(handler);
+
+            // Act: capture the validation failure for a run-step update with no selected execution values.
+            var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+                await repository.UpdateTestRunStepAsync(new UpdateTestRunStepRequest
+                {
+                    StepId = "run-step-1",
+                    TestRunId = "run-1",
+                    Update = new XrayTestRunStepUpdate()
+                }));
+
+            // Assert: the failure identifies the sparse update contract and no authentication request is allocated.
+            StringAssert.Contains(exception.Message, "At least one Test Run Step field");
+            Assert.AreEqual(0, handler.Requests.Count);
+        }
+
+        [TestMethod(DisplayName = "Verify that UpdateTestRunStep sends sparse manual execution values.")]
+        public async Task UpdateTestRunStepSparseFieldsTestAsync()
+        {
+            // Arrange: queue one successful mutation with a non-fatal Xray warning behind cached authentication.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\"data\":{\"updateTestRunStep\":{\"warnings\":[\"status normalized\"]}}}");
+            var repository = NewRepository(handler);
+
+            // Act: record an observed outcome and status while leaving comment and iteration context untouched.
+            var result = await repository.UpdateTestRunStepAsync(new UpdateTestRunStepRequest
+            {
+                StepId = "run-step-1",
+                TestRunId = "run-1",
+                Update = new XrayTestRunStepUpdate
+                {
+                    ActualResult = "Page opened",
+                    Status = "PASSED"
+                }
+            });
+
+            // Assert: opaque run identities and selected values reach the documented GraphQL variable names.
+            using var requestDocument = JsonDocument.Parse(handler.Requests[1].Body);
+            var variables = requestDocument.RootElement.GetProperty("variables");
+            var updateData = variables.GetProperty("updateData");
+            Assert.AreEqual("run-1", variables.GetProperty("testRunId").GetString());
+            Assert.AreEqual("run-step-1", variables.GetProperty("stepId").GetString());
+            Assert.AreEqual("Page opened", updateData.GetProperty("actualResult").GetString());
+            Assert.AreEqual("PASSED", updateData.GetProperty("status").GetString());
+
+            // Assert: omitted values remain absent and Xray warnings stay visible to the manual-cycle caller.
+            Assert.IsFalse(updateData.TryGetProperty("comment", out _));
+            Assert.IsFalse(variables.TryGetProperty("iterationRank", out _));
+            CollectionAssert.AreEqual(new[] { "status normalized" }, result.Warnings.ToArray());
         }
 
         // Reads one string variable from a captured GraphQL request while disposing temporary JSON state locally.
