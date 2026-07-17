@@ -1,0 +1,139 @@
+{
+	"description": "Create an Xray Cloud Test Execution with an initial set of Tests and optional execution environments. All Test keys are resolved before creation, and the result includes the created issue identity and Xray warnings.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"customFields": {
+				"description": "Optional Jira/Xray custom field values applied to the Test Execution issue.",
+				"items": {
+					"additionalProperties": false,
+					"properties": {
+						"name": {
+							"description": "The Jira/Xray custom field name or key.",
+							"type": "string"
+						},
+						"value": {
+							"description": "The value assigned to the custom field.",
+							"type": [
+								"string",
+								"number",
+								"integer",
+								"boolean",
+								"object",
+								"array",
+								"null"
+							]
+						}
+					},
+					"required": [
+						"name",
+						"value"
+					],
+					"type": "object"
+				},
+				"type": "array"
+			},
+			"description": {
+				"description": "Detailed description for the Test Execution issue.",
+				"type": "string"
+			},
+			"project": {
+				"description": "The Jira project key where the Test Execution is created.",
+				"type": "string"
+			},
+			"summary": {
+				"description": "The human-readable summary for the Test Execution issue.",
+				"type": "string"
+			},
+			"testEnvironments": {
+				"description": "Optional Xray execution environment names associated with the new Test Execution.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array",
+				"uniqueItems": true
+			},
+			"testKeys": {
+				"description": "The Jira issue keys of the Tests included in the new Test Execution.",
+				"items": {
+					"type": "string"
+				},
+				"minItems": 1,
+				"type": "array",
+				"uniqueItems": true
+			}
+		},
+		"required": [
+			"project",
+			"summary",
+			"testKeys"
+		],
+		"type": "object"
+	},
+	"name": "new_xray_execution",
+	"outputSchema": {
+		"additionalProperties": false,
+		"oneOf": [
+			{
+				"required": [
+					"createdTestEnvironments",
+					"id",
+					"key",
+					"link",
+					"testKeys",
+					"warnings"
+				]
+			},
+			{
+				"required": [
+					"error",
+					"message"
+				]
+			}
+		],
+		"properties": {
+			"createdTestEnvironments": {
+				"description": "Environment names created by Xray during Test Execution creation.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			},
+			"id": {
+				"description": "The numeric Jira issue identifier of the created Test Execution.",
+				"type": "string"
+			},
+			"error": {
+				"description": "The actionable root failure returned when Test Execution creation fails.",
+				"type": "string"
+			},
+			"key": {
+				"description": "The Jira issue key of the created Test Execution.",
+				"type": "string"
+			},
+			"link": {
+				"description": "A direct Jira link to the created Test Execution.",
+				"type": "string"
+			},
+			"message": {
+				"description": "A stable summary returned when Test Execution creation fails.",
+				"type": "string"
+			},
+			"testKeys": {
+				"description": "The resolved Test keys associated with the Test Execution.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			},
+			"warnings": {
+				"description": "Non-fatal warnings returned by Xray.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			}
+		},
+		"type": "object"
+	}
+}

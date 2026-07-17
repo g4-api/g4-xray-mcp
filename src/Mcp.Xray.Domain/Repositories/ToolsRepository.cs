@@ -366,6 +366,20 @@ namespace Mcp.Xray.Domain.Repositories
                     : null;
             }
 
+            // Creates a new Xray Test Execution with its initial Tests and execution environments.
+            [SystemTool("new_xray_execution")]
+            public static object NewXrayExecution(InvokeOptions options)
+            {
+                // Extract the Jira project key before deserializing the complete creation contract.
+                var project = options.Arguments.GetProperty("project").GetString();
+
+                // Materialize issue fields and Test associations through the shared JSON configuration.
+                var execution = options.Arguments.Deserialize<NewExecutionModel>(AppSettings.JsonOptions);
+
+                // Delegate identity resolution and the atomic Xray mutation to the selected repository provider.
+                return options.Xray.NewExecution(project, execution);
+            }
+
             // Creates a new Xray test case in Jira based on the provided invocation options.
             // The invocation context containing the resolved Jira project and the
             // serialized test case definition supplied by the caller.
@@ -484,6 +498,17 @@ namespace Mcp.Xray.Domain.Repositories
                 // Delegate the folder creation logic to the Xray repository implementation,
                 // which handles path resolution and interaction with the internal Xray API.
                 return options.Xray.NewTestRepositoryFolder(project, name, path);
+            }
+
+            // Updates one manual Test Run Step selected through Test Execution, Test, and one-based step identity.
+            [SystemTool("update_xray_execution_step")]
+            public static object UpdateXrayExecutionStep(InvokeOptions options)
+            {
+                // Materialize the composite Test Run identity and sparse outcome values from tool arguments.
+                var execution = options.Arguments.Deserialize<UpdateExecutionModel>(AppSettings.JsonOptions);
+
+                // Delegate Jira resolution, Test Run discovery, and the step mutation to the repository provider.
+                return options.Xray.UpdateExecution(execution);
             }
 
             // Updates an existing Xray test case in Jira using the provided invocation context.

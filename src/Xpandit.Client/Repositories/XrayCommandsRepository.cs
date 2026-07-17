@@ -187,10 +187,12 @@ namespace Xpandit.Client.Repositories
                 // Require positive numeric Jira identifiers because Xray does not accept human-readable keys here.
                 ConfirmNumericId(
                     request.TestExecutionIssueId,
-                    nameof(request.TestExecutionIssueId));
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestExecutionIssueId));
                 ConfirmNumericId(
                     request.TestIssueId,
-                    nameof(request.TestIssueId));
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestIssueId));
             }
         }
 
@@ -556,30 +558,39 @@ namespace Xpandit.Client.Repositories
             // The helper preserves caller state and reports invalid identities or iteration values locally.
             static void AssertArguments(UpdateTestRunStepRequest request)
             {
-                // Require the request and sparse update contract before accessing mutation values.
+                // Require the request before validating its nested mutation contract.
                 ArgumentNullException.ThrowIfNull(
                     argument: request,
                     paramName: nameof(request));
 
-                ArgumentNullException.ThrowIfNull(
-                    argument: request.Update,
-                    paramName: nameof(request.Update));
+                // Report an absent sparse update against the owning request parameter for CA2208-safe diagnostics.
+                if (request.Update is null)
+                {
+                    var message = "Test Run Step request update cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
 
                 // Require Xray's opaque run and step identifiers so the mutation cannot target an unknown entity.
-                ArgumentException.ThrowIfNullOrWhiteSpace(
-                    argument: request.StepId,
-                    paramName: nameof(request.StepId));
+                if (string.IsNullOrWhiteSpace(request.StepId))
+                {
+                    var message = "Test Run Step request step ID cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
 
-                ArgumentException.ThrowIfNullOrWhiteSpace(
-                    argument: request.TestRunId,
-                    paramName: nameof(request.TestRunId));
+                if (string.IsNullOrWhiteSpace(request.TestRunId))
+                {
+                    var message = "Test Run Step request Test Run ID cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
 
-                if (request.IterationRank is not null)
+                var isIterationRankInvalid = request.IterationRank is not null &&
+                    string.IsNullOrWhiteSpace(request.IterationRank);
+
+                if (isIterationRankInvalid)
                 {
                     // Reject an empty iteration selector because omission and an invalid rank have different meaning.
-                    ArgumentException.ThrowIfNullOrWhiteSpace(
-                        argument: request.IterationRank,
-                        paramName: nameof(request.IterationRank));
+                    var message = "Test Run Step request iteration rank cannot be empty or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
                 }
             }
         }
@@ -774,8 +785,14 @@ namespace Xpandit.Client.Repositories
             ArgumentException.ThrowIfNullOrWhiteSpace(jira.Summary);
 
             var fields = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-            var additionalFields = jira.AdditionalFields ??
-                throw new ArgumentNullException(nameof(jira.AdditionalFields));
+            var additionalFields = jira.AdditionalFields;
+
+            if (additionalFields is null)
+            {
+                // Report the invalid nested Jira state against its owning parameter so CA2208 remains satisfied.
+                var message = "Jira additional fields cannot be null.";
+                throw new ArgumentException(message, nameof(jira));
+            }
 
             foreach (var field in additionalFields)
             {
@@ -1040,8 +1057,18 @@ namespace Xpandit.Client.Repositories
             var testExecutionElement = GetRequiredProperty(testRunElement, "testExecution", "GetTestRun");
             var testIssueId = GetOptionalString(testElement, "issueId") ?? string.Empty;
             var testExecutionIssueId = GetOptionalString(testExecutionElement, "issueId") ?? string.Empty;
-            ConfirmNumericId(testIssueId, "GetTestRun.TestIssueId");
-            ConfirmNumericId(testExecutionIssueId, "GetTestRun.TestExecutionIssueId");
+            var isTestIssueIdValid = TestPositiveNumericId(testIssueId);
+            var isTestExecutionIssueIdValid = TestPositiveNumericId(testExecutionIssueId);
+            var hasInvalidIssueIdentity = !isTestIssueIdValid || !isTestExecutionIssueIdValid;
+
+            if (hasInvalidIssueIdentity)
+            {
+                var invalidField = !isTestIssueIdValid
+                    ? "test.issueId"
+                    : "testExecution.issueId";
+                var message = $"Xray operation 'GetTestRun' returned invalid numeric data for '{invalidField}'.";
+                throw new XpanditClientException(message);
+            }
 
             // Preserve Xray's step order so domain callers can map one-based manual step numbers deterministically.
             var steps = GetTestRunSteps(testRunElement);
@@ -1119,9 +1146,11 @@ namespace Xpandit.Client.Repositories
             if (update.Status is not null)
             {
                 // Require a meaningful Xray status name or identifier before adding it to the sparse mutation data.
-                ArgumentException.ThrowIfNullOrWhiteSpace(
-                    argument: update.Status,
-                    paramName: nameof(update.Status));
+                if (string.IsNullOrWhiteSpace(update.Status))
+                {
+                    var message = "Test Run Step update status cannot be empty or whitespace.";
+                    throw new ArgumentException(message, nameof(update));
+                }
 
                 updateData["status"] = update.Status;
             }
@@ -1236,14 +1265,33 @@ namespace Xpandit.Client.Repositories
         // Enforces the numeric Jira IDs required by Xray GraphQL rather than accepting human-readable keys implicitly.
         private static void ConfirmNumericId(string value, string parameterName)
         {
-            var isNumeric = long.TryParse(value, out var numericValue);
+            // Route existing callers through the diagnostic-aware overload without changing their failure contract.
+            ConfirmNumericId(
+                value,
+                parameterName,
+                valueName: parameterName);
+        }
 
-            if (!isNumeric || numericValue <= 0)
+        // Enforces a numeric Jira ID while keeping an owning parameter distinct from a nested value name.
+        private static void ConfirmNumericId(
+            string value,
+            string parameterName,
+            string valueName)
+        {
+            var isNumeric = TestPositiveNumericId(value);
+
+            if (!isNumeric)
             {
-                throw new ArgumentException(
-                    "Xray commands require a positive numeric Jira identifier.",
-                    parameterName);
+                var message = $"Xray command value '{valueName}' requires a positive numeric Jira identifier.";
+                throw new ArgumentException(message, parameterName);
             }
+        }
+
+        // Tests whether a value represents the positive numeric Jira identity required by Xray GraphQL.
+        private static bool TestPositiveNumericId(string value)
+        {
+            var isNumeric = long.TryParse(value, out var numericValue);
+            return isNumeric && numericValue > 0;
         }
         #endregion
     }

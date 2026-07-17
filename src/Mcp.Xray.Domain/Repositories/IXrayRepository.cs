@@ -36,6 +36,23 @@ namespace Mcp.Xray.Domain.Repositories
         object GetTest(string idOrKey);
 
         /// <summary>
+        /// Creates an Xray Test Execution with its initial Tests and execution environments.
+        /// </summary>
+        /// <param name="project">The Jira project key where the Test Execution is created.</param>
+        /// <param name="execution">The Test Execution fields and initial association keys.</param>
+        /// <returns>
+        /// An object containing the Test Execution identity, direct Jira link, associations, and Xray warnings.
+        /// </returns>
+        /// <exception cref="System.NotSupportedException">
+        /// Thrown when the selected repository provider does not implement Xray Test Execution mutations.
+        /// </exception>
+        object NewExecution(string project, NewExecutionModel execution)
+        {
+            var message = "The selected Xray repository does not support Test Execution creation.";
+            throw new System.NotSupportedException(message);
+        }
+
+        /// <summary>
         /// Creates a new Xray test case in Jira and populates it with the provided test steps.
         /// </summary>
         /// <param name="project">The Jira project key under which the test case will be created.</param>
@@ -68,6 +85,22 @@ namespace Mcp.Xray.Domain.Repositories
         /// <param name="path">The hierarchical folder path within the Xray Test Repository to resolve.</param>
         /// <returns>The resolved folder identifier corresponding to the specified path.</returns>
         string ResolveFolderPath(string idOrKey, string path);
+
+        /// <summary>
+        /// Updates one manual step outcome inside the Test Run identified by a Test and Test Execution.
+        /// </summary>
+        /// <param name="execution">The composite Test Run identity, one-based step number, and sparse outcome values.</param>
+        /// <returns>
+        /// An object containing the resolved issue, Test Run, and step identities together with applied values and warnings.
+        /// </returns>
+        /// <exception cref="System.NotSupportedException">
+        /// Thrown when the selected repository provider does not implement Xray Test Run Step mutations.
+        /// </exception>
+        object UpdateExecution(UpdateExecutionModel execution)
+        {
+            var message = "The selected Xray repository does not support Test Run Step updates.";
+            throw new System.NotSupportedException(message);
+        }
 
         /// <summary>
         /// Updates an existing Xray test case by first resolving its Jira project
