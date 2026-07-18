@@ -277,6 +277,30 @@ namespace Mcp.Xray.Domain.Repositories
         /// </summary>
         private static class Tools
         {
+            // Associates existing Test Executions with one Test Plan through the public Xray mutation contract.
+            [SystemTool("add_xray_test_executions_to_plan")]
+            public static object AddXrayTestExecutionsToPlan(InvokeOptions options)
+            {
+                // Materialize the Jira-key association contract before domain-level identity resolution begins.
+                var association = options.Arguments.Deserialize<AddTestExecutionsToPlanModel>(
+                    AppSettings.JsonOptions);
+
+                // Delegate numeric identity resolution and Xray association ownership to the repository provider.
+                return options.Xray.AddTestExecutionsToPlan(association);
+            }
+
+            // Associates existing Tests with one Test Execution and waits for Xray Test Run registration.
+            [SystemTool("add_xray_tests_to_execution")]
+            public static object AddXrayTestsToExecution(InvokeOptions options)
+            {
+                // Materialize the Jira-key association contract before domain-level identity resolution begins.
+                var association = options.Arguments.Deserialize<AddTestsToExecutionModel>(
+                    AppSettings.JsonOptions);
+
+                // Delegate association, registration polling, and result mapping to the repository provider.
+                return options.Xray.AddTestsToExecution(association);
+            }
+
             // Adds Xray test cases selected by a JQL query to a specified folder
             // in the Xray Test Repository.
             [SystemTool("add_xray_tests_to_folder")]
@@ -509,6 +533,18 @@ namespace Mcp.Xray.Domain.Repositories
 
                 // Delegate Jira resolution, Test Run discovery, and the step mutation to the repository provider.
                 return options.Xray.UpdateExecution(execution);
+            }
+
+            // Updates one Test Run status selected through its Test Execution and Test Jira keys.
+            [SystemTool("update_xray_test_run_status")]
+            public static object UpdateXrayTestRunStatus(InvokeOptions options)
+            {
+                // Materialize the composite Test Run identity and status before Jira resolution begins.
+                var testRun = options.Arguments.Deserialize<UpdateTestRunStatusModel>(
+                    AppSettings.JsonOptions);
+
+                // Delegate registration polling and the final status mutation to the repository provider.
+                return options.Xray.UpdateTestRunStatus(testRun);
             }
 
             // Updates an existing Xray test case in Jira using the provided invocation context.

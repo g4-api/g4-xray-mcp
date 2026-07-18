@@ -9,6 +9,34 @@ namespace Mcp.Xray.Domain.Repositories
     public interface IXrayRepository
     {
         /// <summary>
+        /// Associates existing Xray Test Executions with an existing Test Plan.
+        /// </summary>
+        /// <param name="association">The Test Plan key and Test Execution keys resolved before mutation.</param>
+        /// <returns>The resolved Jira identities, accepted associations, and non-fatal Xray warnings.</returns>
+        /// <exception cref="System.NotSupportedException">
+        /// Thrown when the selected repository provider does not implement Xray Test Execution associations.
+        /// </exception>
+        object AddTestExecutionsToPlan(AddTestExecutionsToPlanModel association)
+        {
+            var message = "The selected Xray repository does not support Test Execution to Test Plan associations.";
+            throw new System.NotSupportedException(message);
+        }
+
+        /// <summary>
+        /// Associates existing Xray Tests with an existing Test Execution and waits for their Test Runs.
+        /// </summary>
+        /// <param name="association">The Test Execution key and Test keys resolved before mutation.</param>
+        /// <returns>The resolved Jira identities, registered Test Run identities, and non-fatal Xray warnings.</returns>
+        /// <exception cref="System.NotSupportedException">
+        /// Thrown when the selected repository provider does not implement Xray Test Execution associations.
+        /// </exception>
+        object AddTestsToExecution(AddTestsToExecutionModel association)
+        {
+            var message = "The selected Xray repository does not support Test associations with Test Executions.";
+            throw new System.NotSupportedException(message);
+        }
+
+        /// <summary>
         /// Moves Jira issues selected by a JQL query into a folder in the Xray Test Repository.
         /// </summary>
         /// <param name="idOrKey">The Jira project identifier or project key that defines the repository scope.</param>
@@ -24,7 +52,7 @@ namespace Mcp.Xray.Domain.Repositories
         /// Applies one or more Xray test cases to an existing Test Plan using a JQL query.
         /// </summary>
         /// <param name="idOrKey">The Jira issue identifier or issue key of the target Test Plan.</param>
-        /// <param name="jql">A JQL expression used to resolve the test cases that should be added to the Test Plan.</param>
+        /// <param name="jql">A JQL expression used to resolve the test cases added to the Test Plan.</param>
         /// <returns>The response payload returned by the Xray integration layer when successful. If the operation fails, a structured object containing error details is returned.</returns>
         object AddTestsToPlan(string idOrKey, string jql);
 
@@ -99,6 +127,20 @@ namespace Mcp.Xray.Domain.Repositories
         object UpdateExecution(UpdateExecutionModel execution)
         {
             var message = "The selected Xray repository does not support Test Run Step updates.";
+            throw new System.NotSupportedException(message);
+        }
+
+        /// <summary>
+        /// Updates the status of one Test Run selected by its Test Execution and Test Jira keys.
+        /// </summary>
+        /// <param name="testRun">The composite Test Run identity and Xray status name or identifier.</param>
+        /// <returns>The resolved Jira and Test Run identities together with the status confirmed by Xray.</returns>
+        /// <exception cref="System.NotSupportedException">
+        /// Thrown when the selected repository provider does not implement Xray Test Run status mutations.
+        /// </exception>
+        object UpdateTestRunStatus(UpdateTestRunStatusModel testRun)
+        {
+            var message = "The selected Xray repository does not support Test Run status updates.";
             throw new System.NotSupportedException(message);
         }
 

@@ -40,6 +40,185 @@ namespace Mcp.Xray.Domain.Repositories
 
         #region *** Methods      ***
         /// <inheritdoc />
+        public object AddTestExecutionsToPlan(AddTestExecutionsToPlanModel association)
+        {
+            try
+            {
+                // Assert the complete Jira-key association contract before performing identity lookups.
+                AssertArguments(association);
+
+                // Resolve every entity before mutation so a missing Jira issue cannot leave a partial association.
+                var testPlanIdentity = GetIssueIdentity(_jiraClient, association.TestPlanKey);
+                var testExecutionKeys = association.TestExecutionKeys
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                var testExecutionIdentities = testExecutionKeys
+                    .Select(key => GetIssueIdentity(_jiraClient, key))
+                    .ToArray();
+
+                // Associate all resolved Test Executions through the public Xray GraphQL command repository.
+                var commandsRepository = GetCommandsRepository();
+                var result = commandsRepository
+                    .AddTestExecutionsToTestPlanAsync(new AddTestExecutionsToTestPlanRequest
+                    {
+                        TestExecutionIssueIds = testExecutionIdentities
+                            .Select(identity => identity.Id)
+                            .ToArray(),
+                        TestPlanIssueId = testPlanIdentity.Id
+                    })
+                    .GetAwaiter()
+                    .GetResult();
+
+                // Return requested identities and warnings so idempotent existing associations remain observable.
+                return new
+                {
+                    TestPlanId = testPlanIdentity.Id,
+                    TestPlanKey = testPlanIdentity.Key,
+                    TestExecutionIds = testExecutionIdentities
+                        .Select(identity => identity.Id)
+                        .ToArray(),
+                    TestExecutionKeys = testExecutionIdentities
+                        .Select(identity => identity.Key)
+                        .ToArray(),
+                    result.Warnings
+                };
+            }
+            catch (Exception exception)
+            {
+                // Convert integration failures into the stable error envelope consumed by MCP callers.
+                return new
+                {
+                    Error = exception.GetBaseException().Message,
+                    Message = "Failed to associate Xray Test Executions with the Test Plan."
+                };
+            }
+
+            // Asserts the Test Plan key and required Test Execution key collection before Jira or Xray I/O.
+            // The helper preserves caller state and reports nested failures against the owning association parameter.
+            static void AssertArguments(AddTestExecutionsToPlanModel association)
+            {
+                // Require the root association before reading either side of the relationship.
+                ArgumentNullException.ThrowIfNull(
+                    argument: association,
+                    paramName: nameof(association));
+
+                // Require the Test Plan key consumed by Jira identity resolution.
+                if (string.IsNullOrWhiteSpace(association.TestPlanKey))
+                {
+                    var message = "Test Execution association TestPlanKey cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(association));
+                }
+
+                // Require at least one concrete Test Execution key so the mutation always performs useful work.
+                if (association.TestExecutionKeys is null || association.TestExecutionKeys.Length == 0)
+                {
+                    var message = "Test Execution association keys cannot be null or empty.";
+                    throw new ArgumentException(message, nameof(association));
+                }
+
+                if (association.TestExecutionKeys.Any(string.IsNullOrWhiteSpace))
+                {
+                    var message = "Test Execution association keys cannot contain null or whitespace values.";
+                    throw new ArgumentException(message, nameof(association));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public object AddTestsToExecution(AddTestsToExecutionModel association)
+        {
+            try
+            {
+                // Assert the complete Jira-key association contract before performing identity lookups.
+                AssertArguments(association);
+
+                // Resolve every entity before mutation so a missing Jira issue cannot leave a partial association.
+                var executionIdentity = GetIssueIdentity(_jiraClient, association.ExecutionKey);
+                var testKeys = association.TestKeys
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                var testIdentities = testKeys
+                    .Select(key => GetIssueIdentity(_jiraClient, key))
+                    .ToArray();
+
+                // Associate all resolved Tests through Xray before waiting for their executable Test Run state.
+                var commandsRepository = GetCommandsRepository();
+                var result = commandsRepository
+                    .AddTestsToTestExecutionAsync(new AddTestsToTestExecutionRequest
+                    {
+                        TestExecutionIssueId = executionIdentity.Id,
+                        TestIssueIds = testIdentities
+                            .Select(identity => identity.Id)
+                            .ToArray()
+                    })
+                    .GetAwaiter()
+                    .GetResult();
+
+                // Wait for every requested Test Run so a successful tool response is immediately executable.
+                var testRuns = WaitForTestRuns(
+                    commandsRepository,
+                    executionIssueId: executionIdentity.Id,
+                    testIdentities);
+
+                // Return all resolved identities and registered runs for deterministic downstream step updates.
+                return new
+                {
+                    ExecutionId = executionIdentity.Id,
+                    ExecutionKey = executionIdentity.Key,
+                    TestIds = testIdentities
+                        .Select(identity => identity.Id)
+                        .ToArray(),
+                    TestKeys = testIdentities
+                        .Select(identity => identity.Key)
+                        .ToArray(),
+                    TestRunIds = testRuns
+                        .Select(testRun => testRun.Id)
+                        .ToArray(),
+                    result.Warnings
+                };
+            }
+            catch (Exception exception)
+            {
+                // Convert integration failures into the stable error envelope consumed by MCP callers.
+                return new
+                {
+                    Error = exception.GetBaseException().Message,
+                    Message = "Failed to associate Xray Tests with the Test Execution."
+                };
+            }
+
+            // Asserts the Test Execution key and required Test key collection before Jira or Xray I/O.
+            // The helper preserves caller state and reports nested failures against the owning association parameter.
+            static void AssertArguments(AddTestsToExecutionModel association)
+            {
+                // Require the root association before reading either side of the relationship.
+                ArgumentNullException.ThrowIfNull(
+                    argument: association,
+                    paramName: nameof(association));
+
+                // Require the Test Execution key consumed by Jira identity resolution.
+                if (string.IsNullOrWhiteSpace(association.ExecutionKey))
+                {
+                    var message = "Test association ExecutionKey cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(association));
+                }
+
+                // Require at least one concrete Test key so the mutation always creates executable scope.
+                if (association.TestKeys is null || association.TestKeys.Length == 0)
+                {
+                    var message = "Test association keys cannot be null or empty.";
+                    throw new ArgumentException(message, nameof(association));
+                }
+
+                if (association.TestKeys.Any(string.IsNullOrWhiteSpace))
+                {
+                    var message = "Test association keys cannot contain null or whitespace values.";
+                    throw new ArgumentException(message, nameof(association));
+                }
+            }
+        }
+
+        /// <inheritdoc />
         public object AddTestsToFolder(string idOrKey, string path, string jql)
         {
             // Resolve the repository folder identifier from the provided path.
@@ -165,7 +344,13 @@ namespace Mcp.Xray.Domain.Repositories
                     .GetAwaiter()
                     .GetResult();
 
-                // Return stable Jira identities together with associations and non-fatal Xray diagnostics.
+                // Wait for every initial Test Run so the returned Test Execution is ready for immediate recording.
+                var testRuns = WaitForTestRuns(
+                    commandsRepository,
+                    executionIssueId: result.IssueId,
+                    testIdentities);
+
+                // Return stable Jira and Test Run identities together with non-fatal Xray diagnostics.
                 return new
                 {
                     Id = result.IssueId,
@@ -173,6 +358,9 @@ namespace Mcp.Xray.Domain.Repositories
                     Link = $"{jiraAuthentication.Collection}/browse/{result.Key}",
                     TestKeys = testIdentities
                         .Select(identity => identity.Key)
+                        .ToArray(),
+                    TestRunIds = testRuns
+                        .Select(testRun => testRun.Id)
                         .ToArray(),
                     result.CreatedTestEnvironments,
                     result.Warnings
@@ -435,9 +623,9 @@ namespace Mcp.Xray.Domain.Repositories
                 var testIdentity = GetIssueIdentity(_jiraClient, execution.TestKey);
                 var commandsRepository = GetCommandsRepository();
 
-                // Read the Test Run snapshot first because Xray mutations require opaque run and step identifiers.
+                // Wait for the Test Run because Xray can register execution state after the association response.
                 var testRun = commandsRepository
-                    .GetTestRunAsync(new GetTestRunRequest
+                    .WaitForTestRunAsync(new WaitForTestRunRequest
                     {
                         TestExecutionIssueId = executionIdentity.Id,
                         TestIssueId = testIdentity.Id
@@ -559,6 +747,91 @@ namespace Mcp.Xray.Domain.Repositories
                 {
                     var message = "Execution update iteration rank cannot be empty or whitespace.";
                     throw new ArgumentException(message, nameof(execution));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public object UpdateTestRunStatus(UpdateTestRunStatusModel testRun)
+        {
+            try
+            {
+                // Assert the complete composite identity and status before resolving either Jira issue.
+                AssertArguments(testRun);
+
+                // Resolve caller-facing keys into the numeric Jira identities required for Test Run lookup.
+                var executionIdentity = GetIssueIdentity(_jiraClient, testRun.ExecutionKey);
+                var testIdentity = GetIssueIdentity(_jiraClient, testRun.TestKey);
+                var commandsRepository = GetCommandsRepository();
+
+                // Wait for Xray registration before applying the status through the opaque Test Run identity.
+                var registeredTestRun = commandsRepository
+                    .WaitForTestRunAsync(new WaitForTestRunRequest
+                    {
+                        TestExecutionIssueId = executionIdentity.Id,
+                        TestIssueId = testIdentity.Id
+                    })
+                    .GetAwaiter()
+                    .GetResult();
+
+                // Apply the requested status and retain the scalar value confirmed by Xray's mutation response.
+                var status = commandsRepository
+                    .UpdateTestRunStatusAsync(new UpdateTestRunStatusRequest
+                    {
+                        Status = testRun.Status,
+                        TestRunId = registeredTestRun.Id
+                    })
+                    .GetAwaiter()
+                    .GetResult();
+
+                // Return every resolved identity so the execution journal can persist a complete sync receipt.
+                return new
+                {
+                    ExecutionId = executionIdentity.Id,
+                    ExecutionKey = executionIdentity.Key,
+                    TestId = testIdentity.Id,
+                    TestKey = testIdentity.Key,
+                    TestRunId = registeredTestRun.Id,
+                    Status = status
+                };
+            }
+            catch (Exception exception)
+            {
+                // Convert integration failures into the stable error envelope consumed by MCP callers.
+                return new
+                {
+                    Error = exception.GetBaseException().Message,
+                    Message = "Failed to update the Xray Test Run status."
+                };
+            }
+
+            // Asserts the composite Jira identity and status before the parent method performs any remote work.
+            // The helper preserves caller state and reports nested failures against the owning Test Run parameter.
+            static void AssertArguments(UpdateTestRunStatusModel testRun)
+            {
+                // Require the root request before reading its Test Execution, Test, or status values.
+                ArgumentNullException.ThrowIfNull(
+                    argument: testRun,
+                    paramName: nameof(testRun));
+
+                // Require both Jira keys because together they identify one Xray Test Run.
+                if (string.IsNullOrWhiteSpace(testRun.ExecutionKey))
+                {
+                    var message = "Test Run status ExecutionKey cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(testRun));
+                }
+
+                if (string.IsNullOrWhiteSpace(testRun.TestKey))
+                {
+                    var message = "Test Run status TestKey cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(testRun));
+                }
+
+                // Require a meaningful Xray status name or identifier before constructing mutation state.
+                if (string.IsNullOrWhiteSpace(testRun.Status))
+                {
+                    var message = "Test Run status value cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(testRun));
                 }
             }
         }
@@ -719,7 +992,7 @@ namespace Mcp.Xray.Domain.Repositories
 
                     var jsonResponse = (JsonElement)response;
                     var isCode = jsonResponse.TryGetProperty("code", out JsonElement code);
-                    
+
                     if (!isCode || code.GetInt16() < 400)
                     {
                         return response;
@@ -930,6 +1203,34 @@ namespace Mcp.Xray.Domain.Repositories
                         innerException: exception);
                 }
             }
+        }
+
+        // Waits for every requested Test Run after association so downstream execution writes never race registration.
+        // The helper preserves Test ordering, performs no caller-state mutation, and propagates bounded polling failures.
+        private static List<XrayTestRunResult> WaitForTestRuns(
+            XrayCommandsRepository commandsRepository,
+            string executionIssueId,
+            IReadOnlyCollection<(string Id, string Key)> testIdentities)
+        {
+            var testRuns = new List<XrayTestRunResult>(testIdentities.Count);
+
+            // Poll each composite identity independently because Xray can register Tests at different times.
+            foreach (var testIdentity in testIdentities)
+            {
+                var testRun = commandsRepository
+                    .WaitForTestRunAsync(new WaitForTestRunRequest
+                    {
+                        TestExecutionIssueId = executionIssueId,
+                        TestIssueId = testIdentity.Id
+                    })
+                    .GetAwaiter()
+                    .GetResult();
+
+                // Preserve caller ordering so returned Test Run IDs align with the resolved Test key collection.
+                testRuns.Add(testRun);
+            }
+
+            return testRuns;
         }
         #endregion
 

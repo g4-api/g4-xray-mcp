@@ -81,6 +81,7 @@
 					"key",
 					"link",
 					"testKeys",
+					"testRunIds",
 					"warnings"
 				]
 			},
@@ -121,6 +122,13 @@
 			},
 			"testKeys": {
 				"description": "The resolved Test keys associated with the Test Execution.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			},
+			"testRunIds": {
+				"description": "Opaque Xray identifiers of the registered Test Runs in Test-key order.",
 				"items": {
 					"type": "string"
 				},
