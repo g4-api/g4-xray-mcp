@@ -365,6 +365,49 @@ namespace Xpandit.Client.Repositories
         }
 
         /// <inheritdoc />
+        public async Task<XrayTestResult> GetTestAsync(
+            string issueId)
+        {
+            // Route convenience callers through the cancellation-aware query lifecycle.
+            return await GetTestAsync(
+                issueId,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestResult> GetTestAsync(
+            string issueId,
+            CancellationToken cancellationToken)
+        {
+            // Require Xray's numeric Test identity before authentication allocates remote request state.
+            ConfirmNumericId(
+                issueId,
+                parameterName: nameof(issueId));
+            var variables = new
+            {
+                issueId
+            };
+
+            // Query the public Xray Test contract so retrieval does not depend on Jira issue-panel sessions.
+            var data = await _client.InvokeAsync(
+                operationName: "GetTest",
+                query: XrayGraphQlDocuments.GetTest,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Preserve not-found as a domain lookup result while retaining schema failures as client exceptions.
+            if (!data.TryGetProperty("getTest", out var testElement) ||
+                testElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                var message = $"No Xray Test was found for Jira issue '{issueId}'.";
+                throw new KeyNotFoundException(message);
+            }
+
+            // Map the detached GraphQL snapshot so callers own stable values after response disposal.
+            return GetTestResult(testElement, requestedIssueId: issueId);
+        }
+
+        /// <inheritdoc />
         public async Task<XrayTestRunResult> GetTestRunAsync(
             GetTestRunRequest request)
         {
@@ -1612,6 +1655,33 @@ namespace Xpandit.Client.Repositories
                 : null;
         }
 
+        // Maps an optional Test step array while preserving empty definitions for non-manual Test types.
+        // The helper clones custom values through the shared step mapper and rejects incompatible schema changes.
+        private static List<XrayTestStepResult> GetOptionalTestStepResults(JsonElement testElement)
+        {
+            if (!testElement.TryGetProperty("steps", out var stepsElement) ||
+                stepsElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                return [];
+            }
+
+            if (stepsElement.ValueKind != JsonValueKind.Array)
+            {
+                var message = "Xray operation 'GetTest' did not return a compatible step array.";
+                throw new XpanditClientException(message);
+            }
+
+            // Preserve the definition order because manual execution presents steps in this same sequence.
+            var steps = new List<XrayTestStepResult>(stepsElement.GetArrayLength());
+
+            foreach (var stepElement in stepsElement.EnumerateArray())
+            {
+                steps.Add(GetTestStepResult(stepElement));
+            }
+
+            return steps;
+        }
+
         // Retrieves a required payload field and raises a schema-focused failure when Xray changes its response shape.
         private static JsonElement GetRequiredProperty(
             JsonElement element,
@@ -1733,6 +1803,57 @@ namespace Xpandit.Client.Repositories
             }
 
             return values;
+        }
+
+        // Maps one public Test query result and verifies that Xray returned the requested numeric identity.
+        // The helper retains optional definitions as null and fails when required identity or Jira key data changes.
+        private static XrayTestResult GetTestResult(
+            JsonElement testElement,
+            string requestedIssueId)
+        {
+            // Confirm the returned Test identity before exposing a snapshot for a different Jira issue.
+            var issueId = GetOptionalString(testElement, "issueId") ?? string.Empty;
+            var isIssueIdentityValid = TestPositiveNumericId(issueId) &&
+                string.Equals(issueId, requestedIssueId, StringComparison.Ordinal);
+
+            if (!isIssueIdentityValid)
+            {
+                var message = $"Xray operation 'GetTest' returned issue '{issueId}' " +
+                    $"instead of requested issue '{requestedIssueId}'.";
+                throw new XpanditClientException(message);
+            }
+
+            // Require project and Test type metadata because downstream mappings use both classification values.
+            var projectId = GetOptionalString(testElement, "projectId") ?? string.Empty;
+
+            if (!TestPositiveNumericId(projectId))
+            {
+                var message = "Xray operation 'GetTest' did not return a positive numeric project ID.";
+                throw new XpanditClientException(message);
+            }
+
+            var testTypeElement = GetRequiredProperty(testElement, "testType", "GetTest");
+            var jiraElement = GetRequiredProperty(testElement, "jira", "GetTest");
+            var key = GetOptionalString(jiraElement, "key") ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                var message = "Xray operation 'GetTest' did not return a Jira issue key.";
+                throw new XpanditClientException(message);
+            }
+
+            // Return Xray-native definitions without converting Test-type-specific null values into invented text.
+            return new XrayTestResult
+            {
+                Gherkin = GetOptionalString(testElement, "gherkin"),
+                IssueId = issueId,
+                Key = key,
+                ProjectId = projectId,
+                Steps = GetOptionalTestStepResults(testElement),
+                TestTypeKind = GetOptionalString(testTypeElement, "kind") ?? string.Empty,
+                TestTypeName = GetOptionalString(testTypeElement, "name") ?? string.Empty,
+                Unstructured = GetOptionalString(testElement, "unstructured")
+            };
         }
 
         // Maps the execution snapshot into stable run identity and ordered manual steps used by later mutations.

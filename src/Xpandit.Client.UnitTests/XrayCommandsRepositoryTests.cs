@@ -295,6 +295,131 @@ namespace Xpandit.Client.UnitTests
             CollectionAssert.AreEqual(new[] { "getFolder" }, exception.Errors.Single().Path.ToArray());
         }
 
+        [TestMethod(DisplayName = "Verify that GetTest maps identity, type, Jira key, and ordered manual steps.")]
+        public async Task GetTestMapsManualDefinitionTestAsync()
+        {
+            // Arrange: queue one complete Manual Test snapshot after successful public API authentication.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\n" +
+                "    \"data\": {\n" +
+                "        \"getTest\": {\n" +
+                "            \"issueId\": \"10171\",\n" +
+                "            \"projectId\": \"10035\",\n" +
+                "            \"testType\": {\"name\": \"Manual\", \"kind\": \"Steps\"},\n" +
+                "            \"unstructured\": null,\n" +
+                "            \"gherkin\": null,\n" +
+                "            \"steps\": [\n" +
+                "                {\n" +
+                "                    \"id\": \"step-1\",\n" +
+                "                    \"action\": \"Open page\",\n" +
+                "                    \"data\": \"GAR-58\",\n" +
+                "                    \"result\": \"Page opens\",\n" +
+                "                    \"customFields\": [{\"id\": \"browser\", \"value\": \"Chrome\"}]\n" +
+                "                },\n" +
+                "                {\n" +
+                "                    \"id\": \"step-2\",\n" +
+                "                    \"action\": \"Sign in\",\n" +
+                "                    \"data\": null,\n" +
+                "                    \"result\": \"Dashboard opens\",\n" +
+                "                    \"customFields\": []\n" +
+                "                }\n" +
+                "            ],\n" +
+                "            \"jira\": {\"key\": \"GAR-58\"}\n" +
+                "        }\n" +
+                "    }\n" +
+                "}");
+            var repository = NewRepository(handler);
+
+            // Act: retrieve the Test through the typed GraphQL query using its numeric Jira identity.
+            var result = await repository.GetTestAsync("10171");
+
+            // Assert: the Test retains every required identity and classification value from Xray.
+            Assert.AreEqual("10171", result.IssueId);
+            Assert.AreEqual("GAR-58", result.Key);
+            Assert.AreEqual("10035", result.ProjectId);
+            Assert.AreEqual("Steps", result.TestTypeKind);
+            Assert.AreEqual("Manual", result.TestTypeName);
+            Assert.IsNull(result.Gherkin);
+            Assert.IsNull(result.Unstructured);
+
+            // Assert: ordered manual steps retain definition text and cloned custom field values.
+            Assert.AreEqual(2, result.Steps.Count);
+            var firstStep = result.Steps.First();
+            Assert.AreEqual("step-1", firstStep.Id);
+            Assert.AreEqual("Open page", firstStep.Action);
+            Assert.AreEqual("GAR-58", firstStep.Data);
+            Assert.AreEqual("Page opens", firstStep.Result);
+            var customField = firstStep.CustomFields.Single();
+            var customFieldValue = (JsonElement)customField.Value;
+            Assert.AreEqual("browser", customField.Id);
+            Assert.AreEqual("Chrome", customFieldValue.GetString());
+
+            // Assert: the request uses bearer authentication and sends the numeric ID under the documented variable.
+            Assert.AreEqual("Bearer token-one", handler.Requests[1].Authorization);
+            Assert.AreEqual("10171", GetRequestVariable(handler.Requests[1].Body, "issueId"));
+        }
+
+        [TestMethod(DisplayName = "Verify that GetTest preserves an Unstructured definition with an empty step list.")]
+        public async Task GetTestMapsUnstructuredDefinitionTestAsync()
+        {
+            // Arrange: return an Unstructured Test whose type-specific definition has no manual step array.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(
+                HttpStatusCode.OK,
+                "{\"data\":{\"getTest\":{" +
+                "\"issueId\":\"10172\",\"projectId\":\"10035\"," +
+                "\"testType\":{\"name\":\"Generic\",\"kind\":\"Unstructured\"}," +
+                "\"unstructured\":\"Observe the service response\"," +
+                "\"gherkin\":null,\"steps\":null,\"jira\":{\"key\":\"GAR-59\"}}}}");
+            var repository = NewRepository(handler);
+
+            // Act: retrieve the non-manual definition through the same public Test query.
+            var result = await repository.GetTestAsync("10172");
+
+            // Assert: null manual steps normalize to an empty collection without erasing the free-form definition.
+            Assert.AreEqual("Observe the service response", result.Unstructured);
+            Assert.AreEqual(0, result.Steps.Count);
+            Assert.IsNull(result.Gherkin);
+        }
+
+        [TestMethod(DisplayName = "Verify that GetTest rejects a nonnumeric Jira Test identifier before HTTP work.")]
+        public async Task GetTestRejectsIssueKeyTestAsync()
+        {
+            // Arrange: create a repository with no responses so any transport activity fails the isolation boundary.
+            var handler = new TestHttpMessageHandler();
+            var repository = NewRepository(handler);
+
+            // Act: pass a human-readable key into the numeric-only Xpandit.Client contract.
+            var exception = await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
+                await repository.GetTestAsync("GAR-58"));
+
+            // Assert: validation names the public argument and prevents authentication or GraphQL requests.
+            Assert.AreEqual("issueId", exception.ParamName);
+            Assert.AreEqual(0, handler.Requests.Count);
+        }
+
+        [TestMethod(DisplayName = "Verify that GetTest reports an absent Xray Test as a lookup failure.")]
+        public async Task GetTestReportsMissingTestAsync()
+        {
+            // Arrange: authenticate successfully and return an explicit null Test from the public GraphQL API.
+            var handler = new TestHttpMessageHandler();
+            handler.AddResponse(HttpStatusCode.OK, "\"token-one\"");
+            handler.AddResponse(HttpStatusCode.OK, "{\"data\":{\"getTest\":null}}");
+            var repository = NewRepository(handler);
+
+            // Act: capture the typed lookup failure returned for the missing numeric Test identity.
+            var exception = await Assert.ThrowsExactlyAsync<KeyNotFoundException>(async () =>
+                await repository.GetTestAsync("10199"));
+
+            // Assert: diagnostics retain the requested identity and the query performs one authenticated send.
+            StringAssert.Contains(exception.Message, "10199");
+            Assert.AreEqual(2, handler.Requests.Count);
+        }
+
         [TestMethod(DisplayName = "Verify that GetTestRun maps manual step identities and recorded outcomes.")]
         public async Task GetTestRunMapsManualStepsTestAsync()
         {

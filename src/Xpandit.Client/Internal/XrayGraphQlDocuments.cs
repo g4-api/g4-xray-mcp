@@ -29,6 +29,13 @@ namespace Xpandit.Client.Internal
             "getFolder(projectId: $projectId, path: $path) { " +
             "name path issuesCount testsCount preconditionsCount folders } }";
 
+        internal const string GetTest =
+            "query GetTest($issueId: String!) { " +
+            "getTest(issueId: $issueId) { " +
+            "issueId projectId testType { name kind } unstructured gherkin " +
+            "steps { id action data result customFields { id value } } " +
+            "jira(fields: [\"key\"]) } }";
+
         internal const string GetTestRun =
             "query GetTestRun($testIssueId: String!, $testExecutionIssueId: String!) { " +
             "getTestRun(testIssueId: $testIssueId, testExecIssueId: $testExecutionIssueId) { " +

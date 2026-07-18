@@ -107,6 +107,26 @@ namespace Xpandit.Client.Repositories
             CancellationToken cancellationToken);
 
         /// <summary>
+        /// Gets one Xray Test definition by its numeric Jira issue identifier without caller cancellation.
+        /// </summary>
+        /// <param name="issueId">Numeric Jira issue identifier of the Xray Test.</param>
+        /// <returns>The Test identity, type, definition, Jira key, and ordered manual steps.</returns>
+        /// <exception cref="KeyNotFoundException">Thrown when Xray returns no Test for the supplied issue.</exception>
+        Task<XrayTestResult> GetTestAsync(
+            string issueId);
+
+        /// <summary>
+        /// Gets one Xray Test definition by its numeric Jira issue identifier with caller cancellation.
+        /// </summary>
+        /// <param name="issueId">Numeric Jira issue identifier of the Xray Test.</param>
+        /// <param name="cancellationToken">Token that stops pending authentication, retry delay, or HTTP work.</param>
+        /// <returns>The Test identity, type, definition, Jira key, and ordered manual steps.</returns>
+        /// <exception cref="KeyNotFoundException">Thrown when Xray returns no Test for the supplied issue.</exception>
+        Task<XrayTestResult> GetTestAsync(
+            string issueId,
+            CancellationToken cancellationToken);
+
+        /// <summary>
         /// Gets the manual Test Run identified by its Test and Test Execution issues without caller cancellation.
         /// </summary>
         /// <param name="request">Numeric Jira issue identifiers that form the Xray Test Run identity.</param>
