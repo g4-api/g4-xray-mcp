@@ -283,7 +283,12 @@ namespace Mcp.Xray.Domain.Repositories
         /// <inheritdoc />
         public object GetTest(string idOrKey)
         {
-            return _xpandClient.GetTestCase(idOrKey);
+            // Resolve caller-facing Jira keys into the numeric identity required by the public Xray GraphQL query.
+            var testIdentity = GetIssueIdentity(_jiraClient, idOrKey);
+
+            // Retrieve the detached Test definition through the supported bearer-authenticated Xray client path.
+            var commandsRepository = GetCommandsRepository();
+            return commandsRepository.GetTestAsync(testIdentity.Id).GetAwaiter().GetResult();
         }
 
         /// <inheritdoc />
