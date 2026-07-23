@@ -1,0 +1,87 @@
+{
+	"description": "Associate existing Xray Cloud Test Executions with an existing Test Plan. Jira keys are resolved before one public Xray mutation creates the associations.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"testExecutionKeys": {
+				"description": "Jira issue keys of the Test Executions added to the Test Plan.",
+				"items": {
+					"type": "string"
+				},
+				"minItems": 1,
+				"type": "array",
+				"uniqueItems": true
+			},
+			"testPlanKey": {
+				"description": "Jira issue key of the existing Xray Test Plan.",
+				"type": "string"
+			}
+		},
+		"required": [
+			"testExecutionKeys",
+			"testPlanKey"
+		],
+		"type": "object"
+	},
+	"name": "add_xray_test_executions_to_plan",
+	"outputSchema": {
+		"additionalProperties": false,
+		"oneOf": [
+			{
+				"required": [
+					"testExecutionIds",
+					"testExecutionKeys",
+					"testPlanId",
+					"testPlanKey",
+					"warnings"
+				]
+			},
+			{
+				"required": [
+					"error",
+					"message"
+				]
+			}
+		],
+		"properties": {
+			"error": {
+				"description": "The actionable root failure returned when the association fails.",
+				"type": "string"
+			},
+			"message": {
+				"description": "A stable summary returned when the association fails.",
+				"type": "string"
+			},
+			"testExecutionIds": {
+				"description": "Numeric Jira issue identifiers of the resolved Test Executions.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			},
+			"testExecutionKeys": {
+				"description": "Resolved Jira issue keys of the Test Executions.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			},
+			"testPlanId": {
+				"description": "Numeric Jira issue identifier of the Test Plan.",
+				"type": "string"
+			},
+			"testPlanKey": {
+				"description": "Resolved Jira issue key of the Test Plan.",
+				"type": "string"
+			},
+			"warnings": {
+				"description": "Non-fatal warnings returned by Xray.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			}
+		},
+		"type": "object"
+	}
+}

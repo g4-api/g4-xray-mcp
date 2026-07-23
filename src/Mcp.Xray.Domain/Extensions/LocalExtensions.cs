@@ -293,83 +293,230 @@ namespace Mcp.Xray.Domain.Extensions
         {
             /// <summary>
             /// Retrieves the Xray JWT token associated with the specified Jira issue key.
-            /// The method invokes the interactive issue token endpoint, parses the response,
-            /// and extracts the contextJwt value when available.
+            /// The method first requests a Forge context token for the configured Xray issue panel
+            /// and falls back to the interactive media token when Forge does not return a token.
             /// </summary>
             /// <param name="issueKey">The Jira issue key that provides the context for the JWT generation.</param>
             /// <returns>The JWT token string when it can be resolved successfully, or an empty string when the token is missing or an error occurs.</returns>
             public async Task<string> GetJwt(string issueKey)
             {
-                // Retrieves an interactive issue token from Jira by executing the
-                // <c>issueViewInteractiveQuery</c> operation using the embedded template file.
-                static async Task<string> GetInteractiveIssueToken(JiraAuthenticationModel authenticationModel, string issue)
+                try
                 {
-                    // Read JSON request template from embedded resource.
+                    // Request the Forge token first so Xray receives the installed issue-panel context.
+                    var forgeToken = await GetForgeContextTokenAsync(
+                        authenticationModel,
+                        issue: issueKey
+                    ).ConfigureAwait(false);
+
+                    if (!string.IsNullOrEmpty(forgeToken))
+                    {
+                        return forgeToken;
+                    }
+
+                    // Preserve the existing media-token behavior when the Forge endpoint is unavailable.
+                    var interactiveResponse = await GetInteractiveIssueTokenAsync(
+                        authenticationModel,
+                        issue: issueKey
+                    ).ConfigureAwait(false);
+
+                    var response = interactiveResponse.ConvertToJsonObject();
+                    var uploadToken = response
+                        .SelectTokens("..uploadToken")
+                        .OfType<JObject>()
+                        .FirstOrDefault();
+
+                    // Return the legacy token only when the interactive response contains one.
+                    return uploadToken?
+                        .SelectToken("token")?
+                        .ToString() ?? string.Empty;
+                }
+                catch (Exception)
+                {
+                    // Preserve the established extension contract by returning an empty token on failure.
+                    return string.Empty;
+                }
+
+                static async Task<string> GetForgeContextTokenAsync(
+                    JiraAuthenticationModel authenticationModel,
+                    string issue)
+                {
+                    // Normalize and validate the Jira site before deriving request and origin values.
+                    var collection = authenticationModel.Collection?.TrimEnd('/');
+                    var isCollectionValid = Uri.TryCreate(collection, UriKind.Absolute, out var collectionUri);
+                    var isHttps = isCollectionValid && collectionUri.Scheme == Uri.UriSchemeHttps;
+
+                    if (!isHttps || string.IsNullOrWhiteSpace(issue))
+                    {
+                        return string.Empty;
+                    }
+
+                    // Read the installed Xray module template so Forge receives its full extension context.
+                    var template = Assembly
+                        .GetExecutingAssembly()
+                        .ReadEmbeddedResource("get-forge-context-token.txt");
+
+                    if (string.IsNullOrWhiteSpace(template))
+                    {
+                        return string.Empty;
+                    }
+
+                    // Resolve current issue metadata so every signed context field matches the requested issue.
+                    var issueRoute = $"/rest/api/3/issue/{Uri.EscapeDataString(issue)}?fields=issuetype,project";
+                    using var issueRequest = new HttpRequestMessage(
+                        HttpMethod.Get,
+                        new Uri(collectionUri, issueRoute)
+                    );
+                    issueRequest.Headers.Authorization = authenticationModel.NewAuthenticationHeader();
+
+                    using var issueResponse = await _httpClient
+                        .SendAsync(issueRequest)
+                        .ConfigureAwait(false);
+
+                    if (!issueResponse.IsSuccessStatusCode)
+                    {
+                        return string.Empty;
+                    }
+
+                    var issueResponseBody = await issueResponse.Content
+                        .ReadAsStringAsync()
+                        .ConfigureAwait(false);
+
+                    // Hydrate only the issue-dependent fields while retaining the installed module definition.
+                    var issueData = JObject.Parse(issueResponseBody);
+                    var payload = JObject.Parse(template);
+                    var fields = issueData.SelectToken("fields") as JObject;
+                    var issueType = fields?.SelectToken("issuetype") as JObject;
+                    var project = fields?.SelectToken("project") as JObject;
+                    var contextIssue = payload.SelectToken("extensionData.issue") as JObject;
+                    var contextProject = payload.SelectToken("extensionData.project") as JObject;
+
+                    if (issueType == null || project == null || contextIssue == null || contextProject == null)
+                    {
+                        return string.Empty;
+                    }
+
+                    contextIssue["key"] = issueData.SelectToken("key")?.ToString() ?? issue;
+                    contextIssue["id"] = issueData.SelectToken("id")?.ToString();
+                    contextIssue["type"] = issueType.SelectToken("name")?.ToString();
+                    contextIssue["typeId"] = issueType.SelectToken("id")?.ToString();
+                    contextProject["id"] = project.SelectToken("id")?.ToString();
+                    contextProject["key"] = project.SelectToken("key")?.ToString();
+
+                    var projectType = project.SelectToken("projectTypeKey")?.ToString();
+                    if (!string.IsNullOrWhiteSpace(projectType))
+                    {
+                        contextProject["type"] = projectType;
+                    }
+
+                    // Send the verified minimal request with an origin derived from the trusted Jira site.
+                    var contextRoute = "/rest/internal/2/forge/context/token";
+                    using var contextRequest = new HttpRequestMessage(
+                        HttpMethod.Post,
+                        new Uri(collectionUri, contextRoute)
+                    )
+                    {
+                        Content = new StringContent(
+                            payload.ToString(),
+                            Encoding.UTF8,
+                            "application/json"
+                        )
+                    };
+
+                    contextRequest.Headers.Authorization = authenticationModel.NewAuthenticationHeader();
+                    contextRequest.Headers.TryAddWithoutValidation(
+                        "Origin",
+                        collectionUri.GetLeftPart(UriPartial.Authority)
+                    );
+
+                    using var contextResponse = await _httpClient
+                        .SendAsync(contextRequest)
+                        .ConfigureAwait(false);
+
+                    if (!contextResponse.IsSuccessStatusCode)
+                    {
+                        return string.Empty;
+                    }
+
+                    var contextResponseBody = await contextResponse.Content
+                        .ReadAsStringAsync()
+                        .ConfigureAwait(false);
+
+                    // Normalize supported response shapes so callers receive only the opaque JWT value.
+                    return GetForgeToken(responseBody: contextResponseBody);
+                }
+
+                static string GetForgeToken(string responseBody)
+                {
+                    if (string.IsNullOrWhiteSpace(responseBody))
+                    {
+                        return string.Empty;
+                    }
+
+                    // Accept a raw JWT response without forcing a JSON parse that rejects unquoted text.
+                    var normalizedResponse = responseBody.Trim();
+                    var isRawJwt = normalizedResponse.Count(character => character == '.') == 2
+                        && !normalizedResponse.StartsWith("{", StringComparison.Ordinal)
+                        && !normalizedResponse.StartsWith("[", StringComparison.Ordinal)
+                        && !normalizedResponse.StartsWith("\"", StringComparison.Ordinal);
+
+                    if (isRawJwt)
+                    {
+                        return normalizedResponse;
+                    }
+
+                    // Parse JSON responses first so quoted and object-wrapped tokens are both supported.
+                    var responseToken = JToken.Parse(normalizedResponse);
+                    if (responseToken.Type == JTokenType.String)
+                    {
+                        return responseToken.ToString();
+                    }
+
+                    return responseToken.SelectToken("token")?.ToString()
+                        ?? responseToken.SelectToken("contextToken")?.ToString()
+                        ?? responseToken.SelectToken("contextJwt")?.ToString()
+                        ?? string.Empty;
+                }
+
+                static async Task<string> GetInteractiveIssueTokenAsync(
+                    JiraAuthenticationModel authenticationModel,
+                    string issue)
+                {
+                    // Read the interactive query template so the legacy fallback keeps its existing contract.
                     var template = Assembly
                         .GetExecutingAssembly()
                         .ReadEmbeddedResource("get-interactive-token.txt");
 
-                    // Cannot continue without a valid template.
                     if (string.IsNullOrEmpty(template))
                     {
                         return "{}";
                     }
 
-                    // Prepare request body by injecting project key and issue key.
+                    var project = string.IsNullOrEmpty(authenticationModel.Project)
+                        ? issue.Split('-').FirstOrDefault()
+                        : authenticationModel.Project;
+
+                    // Hydrate the interactive request with the supplied issue and resolved project keys.
                     var data = template
-                        .Replace("[project-key]", authenticationModel.Project)
+                        .Replace("[project-key]", project)
                         .Replace("[issue-key]", issue);
 
-                    // Build Jira route.
                     const string OperationRoute = "/rest/gira/1/?operation=issueViewInteractiveQuery";
                     var url = $"{authenticationModel.Collection.TrimEnd('/')}{OperationRoute}";
 
-                    // Prepare the HTTP POST request.
-                    var request = new HttpRequestMessage(HttpMethod.Post, new Uri(url))
+                    using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(url))
                     {
                         Content = new StringContent(data, Encoding.UTF8, "application/json")
                     };
-
-                    // Attach authentication.
                     request.Headers.Authorization = authenticationModel.NewAuthenticationHeader();
 
-                    // Send the request.
-                    var response = await _httpClient.SendAsync(request).ConfigureAwait(false);
+                    // Invoke Jira and retain the empty-object fallback for unsuccessful responses.
+                    using var response = await _httpClient
+                        .SendAsync(request)
+                        .ConfigureAwait(false);
 
-                    // Return body or "{}" on failure.
                     return response.IsSuccessStatusCode
                         ? await response.Content.ReadAsStringAsync().ConfigureAwait(false)
                         : "{}";
-                }
-
-                // Attempts to parse the response and extract the JWT token.
-                try
-                {
-                    // Calls the interactive issue token API and parses the returned JSON into a JObject.
-                    var response = (await GetInteractiveIssueToken(authenticationModel, issueKey))
-                        .ConvertToJsonObject();
-
-                    // Extracts the options JSON fragment from the nested structure.
-                    var options = response
-                        .SelectTokens("..options")
-                        .FirstOrDefault()
-                        ?.ToString();
-
-                    // Parses the options fragment and selects the contextJwt property.
-                    var token = Newtonsoft.Json.Linq.JObject
-                        .Parse(options)
-                        .SelectToken("contextJwt")
-                        ?.ToString();
-
-                    // Returns the resolved token or an empty string when not available.
-                    return string.IsNullOrEmpty(token)
-                        ? string.Empty
-                        : token;
-                }
-                catch (Exception)
-                {
-                    // Returns an empty string when any error occurs during parsing or token extraction.
-                    return string.Empty;
                 }
             }
 

@@ -44,14 +44,14 @@ namespace Mcp.Xray.Domain.Models
         /// This value is typically rendered as the main body content
         /// of the issue in Jira or Xray.
         /// </summary>
-        public string Description { get; set; }
+        public virtual string Description { get; set; }
 
         /// <summary>
         /// Gets or sets the short summary or title of the issue.
         /// The summary is used as the primary identifier text
         /// when listing or referencing the issue.
         /// </summary>
-        public string Summary { get; set; }
+        public virtual string Summary { get; set; }
         #endregion
     }
 }

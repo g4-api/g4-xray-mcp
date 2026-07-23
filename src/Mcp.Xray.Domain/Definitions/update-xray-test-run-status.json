@@ -1,0 +1,83 @@
+{
+	"description": "Update one Xray Cloud Test Run status. The Test Run is selected by Test Execution and Test Jira keys after bounded registration polling.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"executionKey": {
+				"description": "Jira issue key of the Test Execution that owns the Test Run.",
+				"type": "string"
+			},
+			"status": {
+				"description": "Xray Test Run status name or identifier.",
+				"type": "string"
+			},
+			"testKey": {
+				"description": "Jira issue key of the Test represented by the Test Run.",
+				"type": "string"
+			}
+		},
+		"required": [
+			"executionKey",
+			"status",
+			"testKey"
+		],
+		"type": "object"
+	},
+	"name": "update_xray_test_run_status",
+	"outputSchema": {
+		"additionalProperties": false,
+		"oneOf": [
+			{
+				"required": [
+					"executionId",
+					"executionKey",
+					"status",
+					"testId",
+					"testKey",
+					"testRunId"
+				]
+			},
+			{
+				"required": [
+					"error",
+					"message"
+				]
+			}
+		],
+		"properties": {
+			"error": {
+				"description": "The actionable root failure returned when Test Run registration or status update fails.",
+				"type": "string"
+			},
+			"executionId": {
+				"description": "Numeric Jira issue identifier of the Test Execution.",
+				"type": "string"
+			},
+			"executionKey": {
+				"description": "Resolved Jira issue key of the Test Execution.",
+				"type": "string"
+			},
+			"message": {
+				"description": "A stable summary returned when Test Run registration or status update fails.",
+				"type": "string"
+			},
+			"status": {
+				"description": "Status value confirmed by Xray.",
+				"type": "string"
+			},
+			"testId": {
+				"description": "Numeric Jira issue identifier of the Test.",
+				"type": "string"
+			},
+			"testKey": {
+				"description": "Resolved Jira issue key of the Test.",
+				"type": "string"
+			},
+			"testRunId": {
+				"description": "Opaque Xray identifier of the updated Test Run.",
+				"type": "string"
+			}
+		},
+		"type": "object"
+	}
+}

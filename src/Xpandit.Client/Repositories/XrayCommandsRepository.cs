@@ -1,0 +1,2133 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+
+using Xpandit.Client.Exceptions;
+using Xpandit.Client.Internal;
+using Xpandit.Client.Models;
+
+namespace Xpandit.Client.Repositories
+{
+    /// <summary>
+    /// Executes typed Xray Cloud GraphQL commands for issue creation, manual steps, and Test Repository folders.
+    /// </summary>
+    /// <remarks>
+    /// The repository owns command validation and response mapping. Its <see cref="XrayGraphQlClient"/> instance
+    /// owns token and retry state, while the caller retains ownership of the supplied <see cref="HttpClient"/> and
+    /// its lifetime.
+    /// </remarks>
+    public class XrayCommandsRepository : IXrayCommandsRepository
+    {
+        #region *** Constants    ***
+        private static readonly Regex JiraIssueKeyPattern = new(
+            "^[A-Za-z][A-Za-z0-9_]*-[1-9][0-9]*$",
+            RegexOptions.CultureInvariant);
+        #endregion
+
+        #region *** Fields       ***
+        private readonly XrayGraphQlClient _client;
+        #endregion
+
+        #region *** Constructors ***
+        /// <summary>
+        /// Initializes a standalone Xray commands repository with caller-owned HTTP infrastructure.
+        /// </summary>
+        /// <param name="httpClient">Reusable HTTP client retained by the caller for the repository lifetime.</param>
+        /// <param name="options">Xray credentials, public endpoints, and repeatable-send configuration.</param>
+        /// <exception cref="ArgumentException">Thrown when required credentials or endpoints are invalid.</exception>
+        public XrayCommandsRepository(HttpClient httpClient, XrayClientOptions options)
+        {
+            // Delegate transport validation and state ownership to one internal client for every command.
+            _client = new XrayGraphQlClient(httpClient, options);
+        }
+
+        /// <summary>
+        /// Initializes an Xray commands repository over an existing token-owning GraphQL client.
+        /// </summary>
+        /// <param name="client">Shared GraphQL client that owns authentication and repeatable-send state.</param>
+        /// <remarks>
+        /// This overload lets multiple typed command flows reuse one authenticated client without transferring
+        /// ownership of the caller-supplied HTTP infrastructure.
+        /// </remarks>
+        public XrayCommandsRepository(XrayGraphQlClient client)
+        {
+            ArgumentNullException.ThrowIfNull(
+                argument: client,
+                paramName: nameof(client));
+
+            // Retain the caller-owned client so every command shares its cached token and retry lifecycle.
+            _client = client;
+        }
+        #endregion
+
+        #region *** Methods      ***
+        /// <inheritdoc />
+        public async Task<XrayTestExecutionsAssociationResult> AddTestExecutionsToTestPlanAsync(
+            AddTestExecutionsToTestPlanRequest request)
+        {
+            // Route convenience callers through the cancellation-aware association lifecycle.
+            return await AddTestExecutionsToTestPlanAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestExecutionsAssociationResult> AddTestExecutionsToTestPlanAsync(
+            AddTestExecutionsToTestPlanRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the owning Test Plan identity before validating the required execution collection.
+            AssertArguments(request);
+
+            // Validate and de-duplicate execution identifiers while preserving caller association order.
+            var testExecutionIssueIds = GetRequiredNumericIds(
+                request.TestExecutionIssueIds,
+                parameterName: nameof(request),
+                valueName: nameof(request.TestExecutionIssueIds));
+            var variables = new
+            {
+                issueId = request.TestPlanIssueId,
+                testExecutionIssueIds
+            };
+
+            // Associate the executions through Xray so the Test Plan owns a real execution relationship.
+            var data = await _client.InvokeAsync(
+                operationName: "AddTestExecutionsToTestPlan",
+                query: XrayGraphQlDocuments.AddTestExecutionsToTestPlan,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Return the accepted identifiers and warnings so callers can verify the complete association set.
+            var payload = GetRequiredProperty(
+                data,
+                "addTestExecutionsToTestPlan",
+                "AddTestExecutionsToTestPlan");
+            return new XrayTestExecutionsAssociationResult
+            {
+                AddedTestExecutionIssueIds = GetStringCollection(payload, "addedTestExecutions"),
+                Warnings = GetStringCollection(payload, "warning")
+            };
+
+            // Validates the command and owning Test Plan before the parent method maps execution identifiers.
+            // The helper does not mutate caller data and reports nested identity failures against the request.
+            static void AssertArguments(AddTestExecutionsToTestPlanRequest request)
+            {
+                // Require the parent command before accessing its association identities.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require a numeric Test Plan identity because Xray association mutations reject Jira keys.
+                ConfirmNumericId(
+                    request.TestPlanIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestPlanIssueId));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestStepResult> AddTestStepAsync(
+            AddTestStepRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await AddTestStepAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestStepResult> AddTestStepAsync(
+            AddTestStepRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate the complete add-step contract before allocating GraphQL request data.
+            AssertArguments(request);
+
+            // Include only meaningful optional values so Xray applies its default Test version and field semantics.
+            var variables = new Dictionary<string, object>
+            {
+                ["issueId"] = request.IssueId,
+                ["step"] = GetStepInput(request.Step)
+            };
+
+            if (request.VersionId > 0)
+            {
+                variables["versionId"] = request.VersionId;
+            }
+
+            // Execute the public mutation through the shared token and repeatable-send lifecycle.
+            var data = await _client.InvokeAsync(
+                operationName: "AddTestStep",
+                query: XrayGraphQlDocuments.AddTestStep,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Map the persisted step so callers can use its returned identifier in later updates.
+            var stepElement = GetRequiredProperty(data, "addTestStep", "AddTestStep");
+            return GetTestStepResult(stepElement);
+
+            // Validates the Test identity, nested step definition, and optional version before remote work begins.
+            // Nested member failures name the owning request while their messages identify the invalid value.
+            static void AssertArguments(AddTestStepRequest request)
+            {
+                // Require the parent command before reading its Test identity or nested step definition.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require the nested step model because it owns every serialized manual-step field.
+                if (request.Step is null)
+                {
+                    var message = "Add Test Step request step cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                ConfirmNumericId(
+                    request.IssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.IssueId));
+
+                // Allow omitted and positive versions while rejecting values that Xray cannot resolve.
+                if (request.VersionId < 0)
+                {
+                    var message = "Add Test Step request VersionId cannot be negative.";
+                    throw new ArgumentOutOfRangeException(nameof(request), message);
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestsAssociationResult> AddTestsToTestExecutionAsync(
+            AddTestsToTestExecutionRequest request)
+        {
+            // Route convenience callers through the cancellation-aware association lifecycle.
+            return await AddTestsToTestExecutionAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestsAssociationResult> AddTestsToTestExecutionAsync(
+            AddTestsToTestExecutionRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the owning Test Execution identity before validating the required Test collection.
+            AssertArguments(request);
+
+            // Validate and de-duplicate Test identifiers while preserving caller association order.
+            var testIssueIds = GetRequiredNumericIds(
+                request.TestIssueIds,
+                parameterName: nameof(request),
+                valueName: nameof(request.TestIssueIds));
+            var variables = new
+            {
+                issueId = request.TestExecutionIssueId,
+                testIssueIds
+            };
+
+            // Associate the Tests through Xray so Test Runs can be registered for execution results.
+            var data = await _client.InvokeAsync(
+                operationName: "AddTestsToTestExecution",
+                query: XrayGraphQlDocuments.AddTestsToTestExecution,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Return accepted Test identifiers and non-fatal warnings for association verification.
+            var payload = GetRequiredProperty(data, "addTestsToTestExecution", "AddTestsToTestExecution");
+            return new XrayTestsAssociationResult
+            {
+                AddedTestIssueIds = GetStringCollection(payload, "addedTests"),
+                Warnings = GetStringCollection(payload, "warning")
+            };
+
+            // Validates the command and owning Test Execution before the parent method maps Test identifiers.
+            // The helper does not mutate caller data and reports nested identity failures against the request.
+            static void AssertArguments(AddTestsToTestExecutionRequest request)
+            {
+                // Require the parent command before accessing its association identities.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require a numeric Test Execution identity because Xray association mutations reject Jira keys.
+                ConfirmNumericId(
+                    request.TestExecutionIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestExecutionIssueId));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestsAssociationResult> AddTestsToTestPlanAsync(
+            AddTestsToTestPlanRequest request)
+        {
+            // Route convenience callers through the cancellation-aware association lifecycle.
+            return await AddTestsToTestPlanAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestsAssociationResult> AddTestsToTestPlanAsync(
+            AddTestsToTestPlanRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the owning Test Plan identity before validating the required Test collection.
+            AssertArguments(request);
+
+            // Validate and de-duplicate Test identifiers while preserving caller association order.
+            var testIssueIds = GetRequiredNumericIds(
+                request.TestIssueIds,
+                parameterName: nameof(request),
+                valueName: nameof(request.TestIssueIds));
+            var variables = new
+            {
+                issueId = request.TestPlanIssueId,
+                testIssueIds
+            };
+
+            // Associate the Tests through Xray so the Test Plan owns the requested coverage scope.
+            var data = await _client.InvokeAsync(
+                operationName: "AddTestsToTestPlan",
+                query: XrayGraphQlDocuments.AddTestsToTestPlan,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Return accepted Test identifiers and non-fatal warnings for association verification.
+            var payload = GetRequiredProperty(data, "addTestsToTestPlan", "AddTestsToTestPlan");
+            return new XrayTestsAssociationResult
+            {
+                AddedTestIssueIds = GetStringCollection(payload, "addedTests"),
+                Warnings = GetStringCollection(payload, "warning")
+            };
+
+            // Validates the command and owning Test Plan before the parent method maps Test identifiers.
+            // The helper does not mutate caller data and reports nested identity failures against the request.
+            static void AssertArguments(AddTestsToTestPlanRequest request)
+            {
+                // Require the parent command before accessing its association identities.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require a numeric Test Plan identity because Xray association mutations reject Jira keys.
+                ConfirmNumericId(
+                    request.TestPlanIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestPlanIssueId));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayFolder> GetFoldersAsync(
+            GetFoldersRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await GetFoldersAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayFolder> GetFoldersAsync(
+            GetFoldersRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate repository context before normalizing the requested path.
+            AssertArguments(request);
+            var path = GetNormalizedPath(request.Path, allowRoot: true);
+
+            // Preserve a null response for absent paths so callers can decide whether to create them.
+            return await GetFoldersCoreAsync(
+                instance: this,
+                request.ProjectId,
+                path,
+                cancellationToken).ConfigureAwait(false);
+
+            // Validates the request and numeric project identity before the parent method reads repository context.
+            // The nested project member is reported against the owning request parameter for CA2208 compliance.
+            static void AssertArguments(GetFoldersRequest request)
+            {
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                ConfirmNumericId(
+                    request.ProjectId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.ProjectId));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestResult> GetTestAsync(
+            string issueId)
+        {
+            // Route convenience callers through the cancellation-aware query lifecycle.
+            return await GetTestAsync(
+                issueId,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestResult> GetTestAsync(
+            string issueId,
+            CancellationToken cancellationToken)
+        {
+            // Require Xray's numeric Test identity before authentication allocates remote request state.
+            ConfirmNumericId(
+                issueId,
+                parameterName: nameof(issueId));
+            var variables = new
+            {
+                issueId
+            };
+
+            // Query the public Xray Test contract so retrieval does not depend on Jira issue-panel sessions.
+            var data = await _client.InvokeAsync(
+                operationName: "GetTest",
+                query: XrayGraphQlDocuments.GetTest,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Preserve not-found as a domain lookup result while retaining schema failures as client exceptions.
+            if (!data.TryGetProperty("getTest", out var testElement) ||
+                testElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                var message = $"No Xray Test was found for Jira issue '{issueId}'.";
+                throw new KeyNotFoundException(message);
+            }
+
+            // Map the detached GraphQL snapshot so callers own stable values after response disposal.
+            return GetTestResult(testElement, requestedIssueId: issueId);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestRunResult> GetTestRunAsync(
+            GetTestRunRequest request)
+        {
+            // Route convenience callers through the cancellation-aware operation with no external cancellation.
+            return await GetTestRunAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestRunResult> GetTestRunAsync(
+            GetTestRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert both issue identities before authentication so invalid local input causes no remote work.
+            AssertArguments(request);
+
+            // Query through the nullable core operation so direct callers retain explicit not-found behavior.
+            var testRun = await GetTestRunCoreAsync(
+                instance: this,
+                request,
+                cancellationToken).ConfigureAwait(false);
+
+            if (testRun is null)
+            {
+                var message = $"No Xray Test Run was found for Test '{request.TestIssueId}' " +
+                    $"inside Test Execution '{request.TestExecutionIssueId}'.";
+                throw new KeyNotFoundException(message);
+            }
+
+            // Map the detached execution snapshot so later mutations can use its opaque run and step identifiers.
+            return testRun;
+
+            // Asserts the composite numeric identity before the parent method allocates GraphQL request state.
+            // The helper does not mutate caller data and reports invalid values through argument exceptions.
+            static void AssertArguments(GetTestRunRequest request)
+            {
+                // Require the request before accessing the two issue identifiers that form the lookup identity.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require positive numeric Jira identifiers because Xray does not accept human-readable keys here.
+                ConfirmNumericId(
+                    request.TestExecutionIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestExecutionIssueId));
+                ConfirmNumericId(
+                    request.TestIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestIssueId));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCommandResult> MoveTestToFolderAsync(
+            MoveTestToFolderRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await MoveTestToFolderAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCommandResult> MoveTestToFolderAsync(
+            MoveTestToFolderRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate and normalize both parts before changing the Test's single repository location.
+            AssertArguments(request);
+            var path = GetNormalizedPath(request.Path, allowRoot: true);
+            var variables = new
+            {
+                issueId = request.IssueId,
+                folderPath = path
+            };
+
+            // Xray returns the updated path as a scalar, so successful completion is the observable command result.
+            await _client.InvokeAsync(
+                operationName: "MoveTestToFolder",
+                query: XrayGraphQlDocuments.MoveTestToFolder,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            return new XrayCommandResult();
+
+            // Validates the request and numeric Test identity before the parent method normalizes its destination.
+            // The nested issue member is reported against the owning request parameter for CA2208 compliance.
+            static void AssertArguments(MoveTestToFolderRequest request)
+            {
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                ConfirmNumericId(
+                    request.IssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.IssueId));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayFolder> NewFolderAsync(
+            NewFolderRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await NewFolderAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayFolder> NewFolderAsync(
+            NewFolderRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate and normalize the destination once so every cumulative mutation shares one path form.
+            AssertArguments(request);
+            var targetPath = GetNormalizedPath(request.Path, allowRoot: true);
+
+            // Read the full tree once so existing segments are preserved without issuing redundant create mutations.
+            var rootFolder = await GetFoldersCoreAsync(
+                instance: this,
+                request.ProjectId,
+                path: "/",
+                cancellationToken).ConfigureAwait(false);
+
+            if (rootFolder is null)
+            {
+                var message = $"Xray returned no Test Repository root for project '{request.ProjectId}'.";
+                throw new XpanditClientException(message);
+            }
+
+            if (targetPath == "/")
+            {
+                return rootFolder;
+            }
+
+            // Index every path in Xray's JSON tree so only missing cumulative segments are created.
+            var existingPaths = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "/",
+                rootFolder.Path
+            };
+            AddFolderPaths(rootFolder.Folders, existingPaths);
+
+            foreach (var candidatePath in GetCumulativePaths(targetPath))
+            {
+                if (existingPaths.Contains(candidatePath))
+                {
+                    continue;
+                }
+
+                // Create parents before children so each mutation targets a valid repository hierarchy.
+                await NewFolderCoreAsync(
+                    instance: this,
+                    request.ProjectId,
+                    candidatePath,
+                    cancellationToken).ConfigureAwait(false);
+                existingPaths.Add(candidatePath);
+            }
+
+            // Re-read the leaf after all mutations so the returned counts and child data reflect server state.
+            var folder = await GetFoldersCoreAsync(
+                instance: this,
+                request.ProjectId,
+                targetPath,
+                cancellationToken).ConfigureAwait(false);
+
+            if (folder is null)
+            {
+                var message = $"Xray did not return folder '{targetPath}' " +
+                    "after creating its missing path segments.";
+                throw new XpanditClientException(message);
+            }
+
+            return folder;
+
+            // Validates the request and numeric project identity before the parent method reads repository state.
+            // The nested project member is reported against the owning request parameter for CA2208 compliance.
+            static void AssertArguments(NewFolderRequest request)
+            {
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                ConfirmNumericId(
+                    request.ProjectId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.ProjectId));
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCreatedTestResult> NewTestAsync(
+            NewTestRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await NewTestAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCreatedTestResult> NewTestAsync(
+            NewTestRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate the complete Test creation contract before normalizing mutation data.
+            AssertArguments(request);
+
+            // Normalize the Test type and every sparse step before entering the remote creation lifecycle.
+            var testTypeName = request.TestTypeName.Trim();
+            var steps = new List<object>(request.Steps.Count);
+
+            // Preserve caller order while converting each validated model into Xray's sparse step input.
+            foreach (var step in request.Steps)
+            {
+                steps.Add(GetStepInput(step));
+            }
+
+            // Combine Jira fields, the normalized Test type, and ordered steps into one atomic creation request.
+            var variables = new Dictionary<string, object>
+            {
+                ["jira"] = GetJiraInput(request.Jira),
+                ["steps"] = steps,
+                ["testType"] = new Dictionary<string, object>
+                {
+                    ["name"] = testTypeName
+                }
+            };
+
+            // Let Xray create the Jira issue and register its Test definition within one mutation boundary.
+            var data = await _client.InvokeAsync(
+                operationName: "NewTest",
+                query: XrayGraphQlDocuments.NewTest,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Require the complete identity and definition so a partial GraphQL payload never reports success.
+            var payload = GetRequiredProperty(data, "createTest", "NewTest");
+            var test = GetRequiredProperty(payload, "test", "NewTest");
+            var result = GetCreatedIssueResult(payload, "test", "NewTest");
+
+            if (string.IsNullOrWhiteSpace(result.Key))
+            {
+                var message = "Xray operation 'NewTest' did not return a Jira issue key.";
+                throw new XpanditClientException(message);
+            }
+
+            var testType = GetRequiredProperty(test, "testType", "NewTest");
+            var returnedTestTypeName = GetOptionalString(testType, "name") ?? string.Empty;
+
+            if (!string.Equals(returnedTestTypeName, testTypeName, StringComparison.OrdinalIgnoreCase))
+            {
+                var message = $"Xray operation 'NewTest' returned Test type " +
+                    $"'{returnedTestTypeName}' instead of '{testTypeName}'.";
+                throw new XpanditClientException(message);
+            }
+
+            var persistedSteps = GetTestStepResults(test, "NewTest");
+
+            if (persistedSteps.Count != steps.Count)
+            {
+                var message = $"Xray operation 'NewTest' " +
+                    $"returned {persistedSteps.Count} steps after receiving {steps.Count}.";
+                throw new XpanditClientException(message);
+            }
+
+            // Return warnings with the confirmed Test so callers retain non-fatal Xray diagnostics.
+            return new XrayCreatedTestResult
+            {
+                IssueId = result.IssueId,
+                Key = result.Key,
+                Steps = persistedSteps,
+                TestTypeName = returnedTestTypeName,
+                Warnings = result.Warnings
+            };
+
+            // Validates every required creation value before the parent method allocates GraphQL mutation data.
+            // Nested failures name the owning request parameter while messages identify their exact model member.
+            static void AssertArguments(NewTestRequest request)
+            {
+                // Require the parent command before inspecting its Jira and Xray Test definition.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require both nested creation collections before mutation data is allocated.
+                if (request.Jira is null)
+                {
+                    var message = "New Test request Jira definition cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                if (request.Steps is null)
+                {
+                    var message = "New Test request steps cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                // Require a meaningful Xray Test type before trimming it for response comparison.
+                if (string.IsNullOrWhiteSpace(request.TestTypeName))
+                {
+                    var message = "New Test request TestTypeName cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                // Reject null step entries because their collection position carries ordering semantics.
+                foreach (var step in request.Steps)
+                {
+                    if (step is not null)
+                    {
+                        continue;
+                    }
+
+                    var message = "New Test request steps cannot contain null values.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestExecutionResult> NewTestExecutionAsync(
+            NewTestExecutionRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await NewTestExecutionAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestExecutionResult> NewTestExecutionAsync(
+            NewTestExecutionRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate the creation contract before preparing optional Test and environment associations.
+            AssertArguments(request);
+
+            // Validate optional associations independently so invalid values never create a partial Jira issue.
+            var testIssueIds = GetOptionalNumericIds(request.TestIssueIds, nameof(request.TestIssueIds));
+            var testEnvironments = GetOptionalStrings(
+                request.TestEnvironments,
+                nameof(request.TestEnvironments));
+            var jira = GetJiraInput(request.Jira);
+            var variables = new Dictionary<string, object>
+            {
+                ["jira"] = jira
+            };
+            AddOptionalCollection(variables, "testIssueIds", testIssueIds);
+            AddOptionalCollection(variables, "testEnvironments", testEnvironments);
+
+            // Create the execution and its requested associations in one Xray transaction.
+            var data = await _client.InvokeAsync(
+                operationName: "NewTestExecution",
+                query: XrayGraphQlDocuments.NewTestExecution,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Map execution-specific environments in addition to the shared Jira identity and warnings.
+            var payload = GetRequiredProperty(data, "createTestExecution", "NewTestExecution");
+            var result = GetCreatedIssueResult(payload, "testExecution", "NewTestExecution");
+            return new XrayTestExecutionResult
+            {
+                CreatedTestEnvironments = GetStringCollection(payload, "createdTestEnvironments"),
+                IssueId = result.IssueId,
+                Key = result.Key,
+                Warnings = result.Warnings
+            };
+
+            // Validates required Test Execution creation values before the parent method prepares mutation data.
+            // An absent nested Jira definition is reported against the owning public request parameter.
+            static void AssertArguments(NewTestExecutionRequest request)
+            {
+                // Require the parent command before inspecting its Jira creation definition.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require Jira fields because Xray creates the owning issue inside this mutation.
+                if (request.Jira is null)
+                {
+                    var message = "New Test Execution request Jira definition cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCreatedIssueResult> NewTestPlanAsync(
+            NewTestPlanRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await NewTestPlanAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCreatedIssueResult> NewTestPlanAsync(
+            NewTestPlanRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate the creation contract before preparing Jira fields and optional Test associations.
+            AssertArguments(request);
+
+            // Prepare validated Jira fields and optional Test associations before entering the remote lifecycle.
+            var testIssueIds = GetOptionalNumericIds(request.TestIssueIds, nameof(request.TestIssueIds));
+            var variables = new Dictionary<string, object>
+            {
+                ["jira"] = GetJiraInput(request.Jira)
+            };
+            AddOptionalCollection(variables, "testIssueIds", testIssueIds);
+
+            // Create the Test Plan with its initial Tests through the public Xray mutation.
+            var data = await _client.InvokeAsync(
+                operationName: "NewTestPlan",
+                query: XrayGraphQlDocuments.NewTestPlan,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            var payload = GetRequiredProperty(data, "createTestPlan", "NewTestPlan");
+            return GetCreatedIssueResult(payload, "testPlan", "NewTestPlan");
+
+            // Validates required Test Plan creation values before the parent method prepares mutation data.
+            // An absent nested Jira definition is reported against the owning public request parameter.
+            static void AssertArguments(NewTestPlanRequest request)
+            {
+                // Require the parent command before inspecting its Jira creation definition.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require Jira fields because Xray creates the owning issue inside this mutation.
+                if (request.Jira is null)
+                {
+                    var message = "New Test Plan request Jira definition cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCreatedIssueResult> NewTestSetAsync(
+            NewTestSetRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await NewTestSetAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCreatedIssueResult> NewTestSetAsync(
+            NewTestSetRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate the creation contract before preparing Jira fields and optional Test associations.
+            AssertArguments(request);
+
+            // Prepare validated Jira fields and optional Test associations before entering the remote lifecycle.
+            var testIssueIds = GetOptionalNumericIds(request.TestIssueIds, nameof(request.TestIssueIds));
+            var variables = new Dictionary<string, object>
+            {
+                ["jira"] = GetJiraInput(request.Jira)
+            };
+            AddOptionalCollection(variables, "testIssueIds", testIssueIds);
+
+            // Create the Test Set with its initial Tests through the public Xray mutation.
+            var data = await _client.InvokeAsync(
+                operationName: "NewTestSet",
+                query: XrayGraphQlDocuments.NewTestSet,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            var payload = GetRequiredProperty(data, "createTestSet", "NewTestSet");
+            return GetCreatedIssueResult(payload, "testSet", "NewTestSet");
+
+            // Validates required Test Set creation values before the parent method prepares mutation data.
+            // An absent nested Jira definition is reported against the owning public request parameter.
+            static void AssertArguments(NewTestSetRequest request)
+            {
+                // Require the parent command before inspecting its Jira creation definition.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require Jira fields because Xray creates the owning issue inside this mutation.
+                if (request.Jira is null)
+                {
+                    var message = "New Test Set request Jira definition cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<string> ResolveTestIssueIdAsync(
+            string issueKey)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await ResolveTestIssueIdAsync(
+                issueKey,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<string> ResolveTestIssueIdAsync(
+            string issueKey,
+            CancellationToken cancellationToken)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(
+                argument: issueKey,
+                paramName: nameof(issueKey));
+
+            issueKey = issueKey.Trim();
+
+            if (!JiraIssueKeyPattern.IsMatch(issueKey))
+            {
+                var message = "The Jira issue key must contain a project key and positive issue number.";
+                throw new ArgumentException(message, nameof(issueKey));
+            }
+
+            // Pass JQL as a GraphQL variable so the issue key never changes the query document structure.
+            var variables = new
+            {
+                jql = $"key = \"{issueKey}\""
+            };
+            var data = await _client.InvokeAsync(
+                operationName: "ResolveTestIssueId",
+                query: XrayGraphQlDocuments.ResolveTestIssueId,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Require exactly one matching Test because command routing is unsafe when resolution is ambiguous.
+            var testResults = GetRequiredProperty(data, "getTests", "ResolveTestIssueId");
+            var total = GetOptionalInt32(testResults, "total");
+
+            if (total == 0 ||
+                !testResults.TryGetProperty("results", out var resultsElement) ||
+                resultsElement.ValueKind != JsonValueKind.Array ||
+                resultsElement.GetArrayLength() == 0)
+            {
+                var message = $"No Xray Test was found for Jira issue key '{issueKey}'.";
+                throw new KeyNotFoundException(message);
+            }
+
+            if (total > 1 || resultsElement.GetArrayLength() > 1)
+            {
+                var message = $"More than one Xray Test was returned for Jira issue key '{issueKey}'.";
+                throw new InvalidOperationException(message);
+            }
+
+            var issueId = GetOptionalString(resultsElement[0], "issueId");
+            var resolvedIssueId = issueId ?? string.Empty;
+            ConfirmNumericId(resolvedIssueId, "ResolvedIssueId");
+            return resolvedIssueId;
+        }
+
+        /// <inheritdoc />
+        public async Task<string> UpdateTestRunStatusAsync(
+            UpdateTestRunStatusRequest request)
+        {
+            // Route convenience callers through the cancellation-aware status lifecycle.
+            return await UpdateTestRunStatusAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<string> UpdateTestRunStatusAsync(
+            UpdateTestRunStatusRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the opaque Test Run identity and requested status before allocating mutation data.
+            AssertArguments(request);
+
+            // Preserve Xray's status name-or-identifier contract inside explicit GraphQL variables.
+            var variables = new
+            {
+                status = request.Status.Trim(),
+                testRunId = request.TestRunId.Trim()
+            };
+
+            // Apply the per-Test result through Xray rather than mutating the Test Execution Jira issue.
+            var data = await _client.InvokeAsync(
+                operationName: "UpdateTestRunStatus",
+                query: XrayGraphQlDocuments.UpdateTestRunStatus,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Require the confirmed scalar so a null GraphQL result never reports a successful execution outcome.
+            var updatedStatus = GetOptionalString(data, "updateTestRunStatus") ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(updatedStatus))
+            {
+                var message = "Xray operation 'UpdateTestRunStatus' did not return the updated status.";
+                throw new XpanditClientException(message);
+            }
+
+            return updatedStatus;
+
+            // Validates the result mutation before the parent method constructs remote request state.
+            // The helper does not mutate caller data and reports nested failures against the owning request.
+            static void AssertArguments(UpdateTestRunStatusRequest request)
+            {
+                // Require the parent command before reading the opaque run identity or status value.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require both values consumed by Xray's scalar Test Run status mutation.
+                if (string.IsNullOrWhiteSpace(request.TestRunId))
+                {
+                    var message = "Update Test Run Status request TestRunId cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Status))
+                {
+                    var message = "Update Test Run Status request Status cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCommandResult> UpdateTestRunStepAsync(
+            UpdateTestRunStepRequest request)
+        {
+            // Route convenience callers through the cancellation-aware operation with no external cancellation.
+            return await UpdateTestRunStepAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCommandResult> UpdateTestRunStepAsync(
+            UpdateTestRunStepRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the complete run-step identity before preparing sparse mutation data.
+            AssertArguments(request);
+
+            // Convert only caller-selected outcome fields so omitted values remain unchanged in Xray.
+            var variables = new Dictionary<string, object>
+            {
+                ["stepId"] = request.StepId,
+                ["testRunId"] = request.TestRunId,
+                ["updateData"] = GetTestRunStepUpdate(request.Update)
+            };
+
+            if (request.IterationRank is not null)
+            {
+                // Include iteration context only for data-driven runs so ordinary manual steps use the base snapshot.
+                variables["iterationRank"] = request.IterationRank;
+            }
+
+            // Apply the selected execution values through Xray's public Test Run Step mutation.
+            var data = await _client.InvokeAsync(
+                operationName: "UpdateTestRunStep",
+                query: XrayGraphQlDocuments.UpdateTestRunStep,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+            var payload = GetRequiredProperty(data, "updateTestRunStep", "UpdateTestRunStep");
+
+            // Retain non-fatal Xray diagnostics while the caller continues the manual execution cycle.
+            return new XrayCommandResult
+            {
+                Warnings = GetStringCollection(payload, "warnings")
+            };
+
+            // Asserts all required run-step values before the parent method enters the remote mutation lifecycle.
+            // The helper preserves caller state and reports invalid identities or iteration values locally.
+            static void AssertArguments(UpdateTestRunStepRequest request)
+            {
+                // Require the request before validating its nested mutation contract.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Report an absent sparse update against the owning request parameter for CA2208-safe diagnostics.
+                if (request.Update is null)
+                {
+                    var message = "Test Run Step request update cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                // Require Xray's opaque run and step identifiers so the mutation cannot target an unknown entity.
+                if (string.IsNullOrWhiteSpace(request.StepId))
+                {
+                    var message = "Test Run Step request step ID cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                if (string.IsNullOrWhiteSpace(request.TestRunId))
+                {
+                    var message = "Test Run Step request Test Run ID cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                var isIterationRankInvalid = request.IterationRank is not null &&
+                    string.IsNullOrWhiteSpace(request.IterationRank);
+
+                if (isIterationRankInvalid)
+                {
+                    // Reject an empty iteration selector because omission and an invalid rank have different meaning.
+                    var message = "Test Run Step request iteration rank cannot be empty or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCommandResult> UpdateTestStepAsync(
+            UpdateTestStepRequest request)
+        {
+            // Route convenience callers through the cancellation-aware command lifecycle.
+            return await UpdateTestStepAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayCommandResult> UpdateTestStepAsync(
+            UpdateTestStepRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Validate the step identity and sparse update before constructing GraphQL mutation data.
+            AssertArguments(request);
+
+            // Convert only caller-selected fields so omitted values remain unchanged in Xray.
+            var variables = new
+            {
+                stepId = request.StepId,
+                step = GetStepUpdate(request.Step)
+            };
+
+            // Apply the partial mutation and retain non-fatal warnings for caller diagnostics.
+            var data = await _client.InvokeAsync(
+                operationName: "UpdateTestStep",
+                query: XrayGraphQlDocuments.UpdateTestStep,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+            var payload = GetRequiredProperty(data, "updateTestStep", "UpdateTestStep");
+
+            return new XrayCommandResult
+            {
+                Warnings = GetStringCollection(payload, "warnings")
+            };
+
+            // Validates all required update values before the parent method constructs its GraphQL variables.
+            // Nested failures name the owning request parameter while messages identify their exact member.
+            static void AssertArguments(UpdateTestStepRequest request)
+            {
+                // Require the parent command before reading its step identity or sparse update model.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require both nested update values before constructing GraphQL mutation variables.
+                if (request.Step is null)
+                {
+                    var message = "Update Test Step request step cannot be null.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+
+                if (string.IsNullOrWhiteSpace(request.StepId))
+                {
+                    var message = "Update Test Step request StepId cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(request));
+                }
+            }
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestRunResult> WaitForTestRunAsync(
+            WaitForTestRunRequest request)
+        {
+            // Route convenience callers through the cancellation-aware logical polling lifecycle.
+            return await WaitForTestRunAsync(
+                request,
+                cancellationToken: default).ConfigureAwait(false);
+        }
+
+        /// <inheritdoc />
+        public async Task<XrayTestRunResult> WaitForTestRunAsync(
+            WaitForTestRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            // Assert the composite identity and polling bounds before issuing the first GraphQL query.
+            AssertArguments(request);
+
+            // Preserve one immutable lookup identity across attempts so polling cannot drift between Test Runs.
+            var getTestRunRequest = new GetTestRunRequest
+            {
+                TestExecutionIssueId = request.TestExecutionIssueId,
+                TestIssueId = request.TestIssueId
+            };
+            XrayTestRunResult testRun = null;
+
+            for (var attempt = 1; attempt <= request.MaxAttempts; attempt++)
+            {
+                // Query nullable Test Run state because temporary absence is expected during Xray registration.
+                testRun = await GetTestRunCoreAsync(
+                    instance: this,
+                    getTestRunRequest,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (testRun is not null || attempt >= request.MaxAttempts)
+                {
+                    break;
+                }
+
+                // Delay only between attempts so the final absent result returns without an unnecessary wait.
+                await Task.Delay(request.PollingDelay, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (testRun is null)
+            {
+                // Report both owning issues and the bounded attempt count required to diagnose registration latency.
+                var message = $"No Xray Test Run was found for Test '{request.TestIssueId}' inside Test Execution " +
+                    $"'{request.TestExecutionIssueId}' after {request.MaxAttempts} attempts.";
+                throw new KeyNotFoundException(message);
+            }
+
+            return testRun;
+
+            // Validates the composite Test Run identity and bounded polling policy before the parent method performs I/O.
+            // The helper preserves caller state and reports every nested failure against the owning request parameter.
+            static void AssertArguments(WaitForTestRunRequest request)
+            {
+                // Require the parent command before reading identity or polling values.
+                ArgumentNullException.ThrowIfNull(
+                    argument: request,
+                    paramName: nameof(request));
+
+                // Require both positive numeric Jira identities used by Xray's composite Test Run lookup.
+                ConfirmNumericId(
+                    request.TestExecutionIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestExecutionIssueId));
+                ConfirmNumericId(
+                    request.TestIssueId,
+                    parameterName: nameof(request),
+                    valueName: nameof(request.TestIssueId));
+
+                // Bound logical polling so absent Test Runs cannot keep the caller waiting indefinitely.
+                if (request.MaxAttempts < 1)
+                {
+                    var message = "Wait For Test Run request MaxAttempts must be at least one.";
+                    throw new ArgumentOutOfRangeException(nameof(request), message);
+                }
+
+                if (request.PollingDelay < TimeSpan.Zero)
+                {
+                    var message = "Wait For Test Run request PollingDelay cannot be negative.";
+                    throw new ArgumentOutOfRangeException(nameof(request), message);
+                }
+            }
+        }
+
+        // Recursively scans Xray's schema-free child JSON and indexes every documented path value.
+        private static void AddFolderPaths(JsonElement element, ISet<string> paths)
+        {
+            if (element.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+            {
+                return;
+            }
+
+            var value = element;
+
+            if (value.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var child in value.EnumerateArray())
+                {
+                    AddFolderPaths(child, paths);
+                }
+
+                return;
+            }
+
+            if (value.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+
+            // Capture a folder path when present, then continue through every property for version-tolerant traversal.
+            if (value.TryGetProperty("path", out var pathElement) &&
+                pathElement.ValueKind == JsonValueKind.String)
+            {
+                var path = pathElement.GetString();
+
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    paths.Add(GetNormalizedPath(path, allowRoot: true));
+                }
+            }
+
+            foreach (var property in value.EnumerateObject())
+            {
+                AddFolderPaths(property.Value, paths);
+            }
+        }
+
+        // Adds a serialized collection only when it contains values so GraphQL receives null for optional arguments.
+        private static void AddOptionalCollection(
+            Dictionary<string, object> variables,
+            string name,
+            List<string> values)
+        {
+            if (values.Count > 0)
+            {
+                variables[name] = values;
+            }
+        }
+
+        // Maps one creation payload into the identity used by later commands and the warnings retained for diagnostics.
+        private static XrayCreatedIssueResult GetCreatedIssueResult(
+            JsonElement payload,
+            string issuePropertyName,
+            string operationName)
+        {
+            var issue = GetRequiredProperty(payload, issuePropertyName, operationName);
+            var issueId = GetOptionalString(issue, "issueId");
+            var requiredIssueId = issueId ?? string.Empty;
+            ConfirmNumericId(requiredIssueId, $"{operationName}.IssueId");
+            var key = string.Empty;
+
+            if (issue.TryGetProperty("jira", out var jiraElement) &&
+                jiraElement.ValueKind == JsonValueKind.Object)
+            {
+                key = GetOptionalString(jiraElement, "key") ?? string.Empty;
+            }
+
+            return new XrayCreatedIssueResult
+            {
+                IssueId = requiredIssueId,
+                Key = key,
+                Warnings = GetStringCollection(payload, "warnings")
+            };
+        }
+
+        // Expands one normalized path into parent-first cumulative paths for safe recursive creation.
+        private static List<string> GetCumulativePaths(string path)
+        {
+            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var paths = new List<string>(segments.Length);
+            var currentPath = string.Empty;
+
+            foreach (var segment in segments)
+            {
+                currentPath += $"/{segment}";
+                paths.Add(currentPath);
+            }
+
+            return paths;
+        }
+
+        // Queries one folder without repeating public validation during recursive path creation.
+        private static async Task<XrayFolder> GetFoldersCoreAsync(
+            XrayCommandsRepository instance,
+            string projectId,
+            string path,
+            CancellationToken cancellationToken)
+        {
+            var variables = new
+            {
+                projectId,
+                path
+            };
+
+            // Ask Xray for the selected folder and recursive child scalar through the shared transport.
+            var data = await instance._client.InvokeAsync(
+                operationName: "GetFolders",
+                query: XrayGraphQlDocuments.GetFolders,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            if (!data.TryGetProperty("getFolder", out var folderElement) ||
+                folderElement.ValueKind == JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            if (folderElement.ValueKind != JsonValueKind.Object)
+            {
+                var message = "Xray returned an invalid folder response.";
+                throw new XpanditClientException(message);
+            }
+
+            return GetFolderResult(folderElement);
+        }
+
+        // Maps documented folder metadata while cloning the schema-free recursive child JSON.
+        private static XrayFolder GetFolderResult(JsonElement folderElement)
+        {
+            var folders = default(JsonElement);
+
+            if (folderElement.TryGetProperty("folders", out var foldersElement) &&
+                foldersElement.ValueKind != JsonValueKind.Null)
+            {
+                folders = foldersElement.Clone();
+            }
+
+            return new XrayFolder
+            {
+                Folders = folders,
+                IssuesCount = GetOptionalInt32(folderElement, "issuesCount"),
+                Name = GetOptionalString(folderElement, "name") ?? string.Empty,
+                Path = GetOptionalString(folderElement, "path") ?? string.Empty,
+                PreconditionsCount = GetOptionalInt32(folderElement, "preconditionsCount"),
+                TestsCount = GetOptionalInt32(folderElement, "testsCount")
+            };
+        }
+
+        // Queries one Test Run while preserving temporary absence for registration-aware polling callers.
+        private static async Task<XrayTestRunResult> GetTestRunCoreAsync(
+            XrayCommandsRepository instance,
+            GetTestRunRequest request,
+            CancellationToken cancellationToken)
+        {
+            var variables = new
+            {
+                testExecutionIssueId = request.TestExecutionIssueId,
+                testIssueId = request.TestIssueId
+            };
+
+            // Retrieve the composite Test Run through Xray because Jira issue links do not create execution state.
+            var data = await instance._client.InvokeAsync(
+                operationName: "GetTestRun",
+                query: XrayGraphQlDocuments.GetTestRun,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+
+            // Preserve a null result because Xray can register the Test Run shortly after association completes.
+            if (!data.TryGetProperty("getTestRun", out var testRunElement) ||
+                testRunElement.ValueKind == JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            if (testRunElement.ValueKind != JsonValueKind.Object)
+            {
+                var message = "Xray operation 'GetTestRun' returned an invalid Test Run response.";
+                throw new XpanditClientException(message);
+            }
+
+            // Map the ready execution snapshot only after confirming the GraphQL object shape.
+            return GetTestRunResult(testRunElement);
+        }
+
+        // Creates the GraphQL JSON scalar expected by Xray while keeping core Jira fields authoritative.
+        private static Dictionary<string, object> GetJiraInput(XrayJiraIssue jira)
+        {
+            AssertArguments(jira);
+
+            // Normalize optional extension fields so request mapping follows one linear collection workflow.
+            jira.AdditionalFields ??= new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            var fields = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            var additionalFields = jira.AdditionalFields;
+
+            // Copy extension fields only after rejecting names owned by the strongly typed Jira contract.
+            foreach (var field in additionalFields)
+            {
+                if (string.Equals(field.Key, "project", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(field.Key, "summary", StringComparison.OrdinalIgnoreCase))
+                {
+                    var message = $"Additional Jira field '{field.Key}' " +
+                        "conflicts with a strongly typed field.";
+                    throw new ArgumentException(message, nameof(jira));
+                }
+
+                fields[field.Key] = field.Value;
+            }
+
+            // Apply core fields after extension validation so the request has one unambiguous project and summary.
+            fields["project"] = new Dictionary<string, object>
+            {
+                ["key"] = jira.ProjectKey
+            };
+            fields["summary"] = jira.Summary;
+
+            return new Dictionary<string, object>
+            {
+                ["fields"] = fields
+            };
+
+            // Validates the Jira definition before the parent method normalizes and copies extension fields.
+            // Nested project and summary failures name their owning parameter for CA2208-safe diagnostics.
+            static void AssertArguments(XrayJiraIssue jira)
+            {
+                // Require the Jira definition before reading its core issue fields.
+                ArgumentNullException.ThrowIfNull(
+                    argument: jira,
+                    paramName: nameof(jira));
+
+                // Require both strongly typed fields that every Xray Jira creation input consumes.
+                if (string.IsNullOrWhiteSpace(jira.ProjectKey))
+                {
+                    var message = "Jira ProjectKey cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(jira));
+                }
+
+                if (string.IsNullOrWhiteSpace(jira.Summary))
+                {
+                    var message = "Jira Summary cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(jira));
+                }
+            }
+        }
+
+        // Normalizes separators and rejects traversal segments that have no meaning in an Xray repository path.
+        private static string GetNormalizedPath(string path, bool allowRoot)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(
+                argument: path,
+                paramName: nameof(path));
+
+            var segments = path
+                .Replace('\\', '/')
+                .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            if (segments.Any(segment => segment is "." or ".."))
+            {
+                var message = "Folder paths cannot contain traversal segments.";
+                throw new ArgumentException(message, nameof(path));
+            }
+
+            var normalizedPath = segments.Length == 0
+                ? "/"
+                : $"/{string.Join('/', segments)}";
+
+            if (!allowRoot && normalizedPath == "/")
+            {
+                var message = "The repository root is not valid for this command.";
+                throw new ArgumentException(message, nameof(path));
+            }
+
+            return normalizedPath;
+        }
+
+        // Validates optional numeric identifiers, removes exact duplicates, and preserves caller ordering.
+        private static List<string> GetOptionalNumericIds(
+            IReadOnlyCollection<string> values,
+            string parameterName)
+        {
+            if (values is null || values.Count == 0)
+            {
+                return [];
+            }
+
+            var results = new List<string>(values.Count);
+            var uniqueValues = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var value in values)
+            {
+                ConfirmNumericId(value, parameterName);
+
+                if (uniqueValues.Add(value))
+                {
+                    results.Add(value);
+                }
+            }
+
+            return results;
+        }
+
+        // Validates a required numeric identifier collection, removes duplicates, and preserves caller ordering.
+        private static List<string> GetRequiredNumericIds(
+            IReadOnlyCollection<string> values,
+            string parameterName,
+            string valueName)
+        {
+            if (values is null || values.Count == 0)
+            {
+                var message = $"Xray command value '{valueName}' requires at least one Jira identifier.";
+                throw new ArgumentException(message, parameterName);
+            }
+
+            var results = new List<string>(values.Count);
+            var uniqueValues = new HashSet<string>(StringComparer.Ordinal);
+
+            // Validate every collection entry before retaining its first occurrence for GraphQL serialization.
+            foreach (var value in values)
+            {
+                ConfirmNumericId(value, parameterName, valueName);
+
+                if (uniqueValues.Add(value))
+                {
+                    results.Add(value);
+                }
+            }
+
+            return results;
+        }
+
+        // Validates optional text collections, removes exact duplicates, and preserves caller ordering.
+        private static List<string> GetOptionalStrings(
+            IReadOnlyCollection<string> values,
+            string parameterName)
+        {
+            if (values is null || values.Count == 0)
+            {
+                return [];
+            }
+
+            var results = new List<string>(values.Count);
+            var uniqueValues = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var value in values)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    var message = "Collection values cannot be null or whitespace.";
+                    throw new ArgumentException(message, parameterName);
+                }
+
+                if (uniqueValues.Add(value))
+                {
+                    results.Add(value);
+                }
+            }
+
+            return results;
+        }
+
+        // Reads an optional integer scalar and returns zero when Xray omits count metadata.
+        private static int GetOptionalInt32(JsonElement element, string propertyName)
+        {
+            return element.TryGetProperty(propertyName, out var propertyElement) &&
+                propertyElement.TryGetInt32(out var value)
+                ? value
+                : 0;
+        }
+
+        // Reads an optional string scalar while preserving null and non-string values as absence.
+        private static string GetOptionalString(JsonElement element, string propertyName)
+        {
+            return element.TryGetProperty(propertyName, out var propertyElement) &&
+                propertyElement.ValueKind == JsonValueKind.String
+                ? propertyElement.GetString()
+                : null;
+        }
+
+        // Maps an optional Test step array while preserving empty definitions for non-manual Test types.
+        // The helper clones custom values through the shared step mapper and rejects incompatible schema changes.
+        private static List<XrayTestStepResult> GetOptionalTestStepResults(JsonElement testElement)
+        {
+            if (!testElement.TryGetProperty("steps", out var stepsElement) ||
+                stepsElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                return [];
+            }
+
+            if (stepsElement.ValueKind != JsonValueKind.Array)
+            {
+                var message = "Xray operation 'GetTest' did not return a compatible step array.";
+                throw new XpanditClientException(message);
+            }
+
+            // Preserve the definition order because manual execution presents steps in this same sequence.
+            var steps = new List<XrayTestStepResult>(stepsElement.GetArrayLength());
+
+            foreach (var stepElement in stepsElement.EnumerateArray())
+            {
+                steps.Add(GetTestStepResult(stepElement));
+            }
+
+            return steps;
+        }
+
+        // Retrieves a required payload field and raises a schema-focused failure when Xray changes its response shape.
+        private static JsonElement GetRequiredProperty(
+            JsonElement element,
+            string propertyName,
+            string operationName)
+        {
+            if (!element.TryGetProperty(propertyName, out var propertyElement) ||
+                propertyElement.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            {
+                var message = $"Xray operation '{operationName}' did not return '{propertyName}'.";
+                throw new XpanditClientException(message);
+            }
+
+            return propertyElement;
+        }
+
+        // Reads an optional Xray status name while preserving absent or incompatible status objects as empty state.
+        private static string GetStatusName(JsonElement element)
+        {
+            if (!element.TryGetProperty("status", out var statusElement) ||
+                statusElement.ValueKind != JsonValueKind.Object)
+            {
+                return string.Empty;
+            }
+
+            return GetOptionalString(statusElement, "name") ?? string.Empty;
+        }
+
+        // Converts an add-step model into a sparse GraphQL input while validating custom field identities.
+        private static Dictionary<string, object> GetStepInput(XrayTestStepInput step)
+        {
+            var input = new Dictionary<string, object>();
+
+            if (step.Action is not null)
+            {
+                input["action"] = step.Action;
+            }
+
+            if (step.Data is not null)
+            {
+                input["data"] = step.Data;
+            }
+
+            if (step.Result is not null)
+            {
+                input["result"] = step.Result;
+            }
+
+            var customFields = GetCustomFields(step.CustomFields);
+
+            if (customFields.Count > 0)
+            {
+                input["customFields"] = customFields;
+            }
+
+            return input;
+        }
+
+        // Converts a partial step update while retaining the distinction between omitted and explicitly empty values.
+        private static Dictionary<string, object> GetStepUpdate(XrayTestStepUpdate step)
+        {
+            var update = new Dictionary<string, object>();
+
+            if (step.Action is not null)
+            {
+                update["action"] = step.Action;
+            }
+
+            if (step.Data is not null)
+            {
+                update["data"] = step.Data;
+            }
+
+            if (step.Result is not null)
+            {
+                update["result"] = step.Result;
+            }
+
+            if (step.CustomFields is not null)
+            {
+                update["customFields"] = GetCustomFields(step.CustomFields);
+            }
+
+            if (update.Count == 0)
+            {
+                var message = "At least one test-step field must be selected for update.";
+                throw new ArgumentException(message, nameof(step));
+            }
+
+            return update;
+        }
+
+        // Maps a JSON string array to an immutable caller-facing collection and ignores incompatible values.
+        private static List<string> GetStringCollection(
+            JsonElement element,
+            string propertyName)
+        {
+            if (!element.TryGetProperty(propertyName, out var valuesElement) ||
+                valuesElement.ValueKind != JsonValueKind.Array)
+            {
+                return [];
+            }
+
+            var values = new List<string>();
+
+            foreach (var valueElement in valuesElement.EnumerateArray())
+            {
+                if (valueElement.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var value = valueElement.GetString();
+
+                if (value is not null)
+                {
+                    values.Add(value);
+                }
+            }
+
+            return values;
+        }
+
+        // Maps one public Test query result and verifies that Xray returned the requested numeric identity.
+        // The helper retains optional definitions as null and fails when required identity or Jira key data changes.
+        private static XrayTestResult GetTestResult(
+            JsonElement testElement,
+            string requestedIssueId)
+        {
+            // Confirm the returned Test identity before exposing a snapshot for a different Jira issue.
+            var issueId = GetOptionalString(testElement, "issueId") ?? string.Empty;
+            var isIssueIdentityValid = TestPositiveNumericId(issueId) &&
+                string.Equals(issueId, requestedIssueId, StringComparison.Ordinal);
+
+            if (!isIssueIdentityValid)
+            {
+                var message = $"Xray operation 'GetTest' returned issue '{issueId}' " +
+                    $"instead of requested issue '{requestedIssueId}'.";
+                throw new XpanditClientException(message);
+            }
+
+            // Require project and Test type metadata because downstream mappings use both classification values.
+            var projectId = GetOptionalString(testElement, "projectId") ?? string.Empty;
+
+            if (!TestPositiveNumericId(projectId))
+            {
+                var message = "Xray operation 'GetTest' did not return a positive numeric project ID.";
+                throw new XpanditClientException(message);
+            }
+
+            var testTypeElement = GetRequiredProperty(testElement, "testType", "GetTest");
+            var jiraElement = GetRequiredProperty(testElement, "jira", "GetTest");
+            var key = GetOptionalString(jiraElement, "key") ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                var message = "Xray operation 'GetTest' did not return a Jira issue key.";
+                throw new XpanditClientException(message);
+            }
+
+            // Return Xray-native definitions without converting Test-type-specific null values into invented text.
+            return new XrayTestResult
+            {
+                Gherkin = GetOptionalString(testElement, "gherkin"),
+                IssueId = issueId,
+                Key = key,
+                ProjectId = projectId,
+                Steps = GetOptionalTestStepResults(testElement),
+                TestTypeKind = GetOptionalString(testTypeElement, "kind") ?? string.Empty,
+                TestTypeName = GetOptionalString(testTypeElement, "name") ?? string.Empty,
+                Unstructured = GetOptionalString(testElement, "unstructured")
+            };
+        }
+
+        // Maps the execution snapshot into stable run identity and ordered manual steps used by later mutations.
+        private static XrayTestRunResult GetTestRunResult(JsonElement testRunElement)
+        {
+            // Require the opaque run identifier because every execution-result mutation depends on it.
+            var testRunId = GetOptionalString(testRunElement, "id") ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(testRunId))
+            {
+                var message = "Xray operation 'GetTestRun' did not return a Test Run identifier.";
+                throw new XpanditClientException(message);
+            }
+
+            // Require both owning Jira issues so callers can retain the composite lookup identity with the snapshot.
+            var testElement = GetRequiredProperty(testRunElement, "test", "GetTestRun");
+            var testExecutionElement = GetRequiredProperty(testRunElement, "testExecution", "GetTestRun");
+            var testIssueId = GetOptionalString(testElement, "issueId") ?? string.Empty;
+            var testExecutionIssueId = GetOptionalString(testExecutionElement, "issueId") ?? string.Empty;
+            var isTestIssueIdValid = TestPositiveNumericId(testIssueId);
+            var isTestExecutionIssueIdValid = TestPositiveNumericId(testExecutionIssueId);
+            var hasInvalidIssueIdentity = !isTestIssueIdValid || !isTestExecutionIssueIdValid;
+
+            if (hasInvalidIssueIdentity)
+            {
+                var invalidField = !isTestIssueIdValid
+                    ? "test.issueId"
+                    : "testExecution.issueId";
+                var message = $"Xray operation 'GetTestRun' returned invalid numeric data for '{invalidField}'.";
+                throw new XpanditClientException(message);
+            }
+
+            // Preserve Xray's step order so domain callers can map one-based manual step numbers deterministically.
+            var steps = GetTestRunSteps(testRunElement);
+
+            return new XrayTestRunResult
+            {
+                Id = testRunId,
+                Status = GetStatusName(testRunElement),
+                Steps = steps,
+                TestExecutionIssueId = testExecutionIssueId,
+                TestIssueId = testIssueId
+            };
+        }
+
+        // Maps one manual run-step snapshot and rejects responses without the identifier required for later updates.
+        private static XrayTestRunStepResult GetTestRunStepResult(JsonElement stepElement)
+        {
+            var stepId = GetOptionalString(stepElement, "id") ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(stepId))
+            {
+                var message = "Xray operation 'GetTestRun' returned a step without an identifier.";
+                throw new XpanditClientException(message);
+            }
+
+            return new XrayTestRunStepResult
+            {
+                Action = GetOptionalString(stepElement, "action"),
+                ActualResult = GetOptionalString(stepElement, "actualResult"),
+                Comment = GetOptionalString(stepElement, "comment"),
+                Data = GetOptionalString(stepElement, "data"),
+                ExpectedResult = GetOptionalString(stepElement, "result"),
+                Id = stepId,
+                Status = GetStatusName(stepElement)
+            };
+        }
+
+        // Maps the complete manual step array while retaining Xray's execution-snapshot ordering.
+        private static List<XrayTestRunStepResult> GetTestRunSteps(JsonElement testRunElement)
+        {
+            var stepsElement = GetRequiredProperty(testRunElement, "steps", "GetTestRun");
+
+            if (stepsElement.ValueKind != JsonValueKind.Array)
+            {
+                var message = "Xray operation 'GetTestRun' did not return a run-step array.";
+                throw new XpanditClientException(message);
+            }
+
+            var steps = new List<XrayTestRunStepResult>(stepsElement.GetArrayLength());
+
+            // Convert every returned snapshot in order so step-number selection remains deterministic downstream.
+            foreach (var stepElement in stepsElement.EnumerateArray())
+            {
+                steps.Add(GetTestRunStepResult(stepElement));
+            }
+
+            return steps;
+        }
+
+        // Converts a manual execution update into sparse GraphQL data while preserving explicit empty text values.
+        private static Dictionary<string, object> GetTestRunStepUpdate(XrayTestRunStepUpdate update)
+        {
+            var updateData = new Dictionary<string, object>();
+
+            if (update.ActualResult is not null)
+            {
+                // Retain an empty actual result because callers can use it to clear a previously recorded outcome.
+                updateData["actualResult"] = update.ActualResult;
+            }
+
+            if (update.Comment is not null)
+            {
+                // Retain an empty comment because callers can use it to clear a previously recorded execution note.
+                updateData["comment"] = update.Comment;
+            }
+
+            if (update.Status is not null)
+            {
+                // Require a meaningful Xray status name or identifier before adding it to the sparse mutation data.
+                if (string.IsNullOrWhiteSpace(update.Status))
+                {
+                    var message = "Test Run Step update status cannot be empty or whitespace.";
+                    throw new ArgumentException(message, nameof(update));
+                }
+
+                updateData["status"] = update.Status;
+            }
+
+            if (updateData.Count == 0)
+            {
+                var message = "At least one Test Run Step field must be selected for update.";
+                throw new ArgumentException(message, nameof(update));
+            }
+
+            return updateData;
+        }
+
+        // Maps the add-step payload into the documented public response and preserves custom JSON values.
+        private static XrayTestStepResult GetTestStepResult(JsonElement stepElement)
+        {
+            var customFields = new List<XrayCustomStepField>();
+
+            if (stepElement.TryGetProperty("customFields", out var customFieldsElement) &&
+                customFieldsElement.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var fieldElement in customFieldsElement.EnumerateArray())
+                {
+                    object value = null;
+
+                    if (fieldElement.TryGetProperty("value", out var valueElement))
+                    {
+                        value = valueElement.Clone();
+                    }
+
+                    customFields.Add(new XrayCustomStepField
+                    {
+                        Id = GetOptionalString(fieldElement, "id") ?? string.Empty,
+                        Value = value
+                    });
+                }
+            }
+
+            return new XrayTestStepResult
+            {
+                Action = GetOptionalString(stepElement, "action"),
+                CustomFields = customFields,
+                Data = GetOptionalString(stepElement, "data"),
+                Id = GetOptionalString(stepElement, "id") ?? string.Empty,
+                Result = GetOptionalString(stepElement, "result")
+            };
+        }
+
+        // Maps the complete step array selected by Test creation and rejects missing or incompatible response data.
+        private static List<XrayTestStepResult> GetTestStepResults(
+            JsonElement testElement,
+            string operationName)
+        {
+            var stepsElement = GetRequiredProperty(testElement, "steps", operationName);
+
+            if (stepsElement.ValueKind != JsonValueKind.Array)
+            {
+                var message = $"Xray operation '{operationName}' did not return a step array.";
+                throw new XpanditClientException(message);
+            }
+
+            // Preserve Xray's returned ordering so callers can compare the persisted definition with their request.
+            var steps = new List<XrayTestStepResult>(stepsElement.GetArrayLength());
+
+            foreach (var stepElement in stepsElement.EnumerateArray())
+            {
+                steps.Add(GetTestStepResult(stepElement));
+            }
+
+            return steps;
+        }
+
+        // Validates custom field identifiers before models enter the transport serialization boundary.
+        private static IReadOnlyCollection<XrayCustomStepField> GetCustomFields(
+            IReadOnlyCollection<XrayCustomStepField> customFields)
+        {
+            if (customFields is null || customFields.Count == 0)
+            {
+                return [];
+            }
+
+            foreach (var customField in customFields)
+            {
+                AssertCustomField(customField);
+            }
+
+            return customFields;
+
+            // Validates one custom field before the parent method returns the caller-owned collection to serialization.
+            // Collection-entry failures name the collection parameter because entries are not declared parameters.
+            static void AssertCustomField(XrayCustomStepField customField)
+            {
+                // Require a concrete collection entry before reading its GraphQL field identifier.
+                if (customField is null)
+                {
+                    var message = "Custom fields cannot contain null entries.";
+                    throw new ArgumentException(message, nameof(customFields));
+                }
+
+                // Require an identifier because Xray cannot route a custom value without one.
+                if (string.IsNullOrWhiteSpace(customField.Id))
+                {
+                    var message = "Custom field identifiers cannot be null or whitespace.";
+                    throw new ArgumentException(message, nameof(customFields));
+                }
+            }
+        }
+
+        // Creates one missing folder segment and lets GraphQL warnings remain non-fatal for final leaf verification.
+        private static async Task NewFolderCoreAsync(
+            XrayCommandsRepository instance,
+            string projectId,
+            string path,
+            CancellationToken cancellationToken)
+        {
+            var variables = new
+            {
+                projectId,
+                path
+            };
+
+            await instance._client.InvokeAsync(
+                operationName: "NewFolder",
+                query: XrayGraphQlDocuments.NewFolder,
+                variables,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        // Enforces the numeric Jira IDs required by Xray GraphQL rather than accepting human-readable keys implicitly.
+        private static void ConfirmNumericId(string value, string parameterName)
+        {
+            // Route existing callers through the diagnostic-aware overload without changing their failure contract.
+            ConfirmNumericId(
+                value,
+                parameterName,
+                valueName: parameterName);
+        }
+
+        // Enforces a numeric Jira ID while keeping an owning parameter distinct from a nested value name.
+        private static void ConfirmNumericId(
+            string value,
+            string parameterName,
+            string valueName)
+        {
+            var isNumeric = TestPositiveNumericId(value);
+
+            if (!isNumeric)
+            {
+                var message = $"Xray command value '{valueName}' requires a positive numeric Jira identifier.";
+                throw new ArgumentException(message, parameterName);
+            }
+        }
+
+        // Tests whether a value represents the positive numeric Jira identity required by Xray GraphQL.
+        private static bool TestPositiveNumericId(string value)
+        {
+            var isNumeric = long.TryParse(value, out var numericValue);
+            return isNumeric && numericValue > 0;
+        }
+        #endregion
+    }
+}

@@ -61,6 +61,16 @@ namespace Mcp.Xray.Domain.Models
         public class ParameterSchemaModel
         {
             /// <summary>
+            /// Gets or sets the JSON Schema additional-properties rule as a Boolean or nested schema.
+            /// </summary>
+            public object AdditionalProperties { get; set; }
+
+            /// <summary>
+            /// Gets or sets alternative schemas where at least one alternative must match.
+            /// </summary>
+            public ParameterSchemaModel[] AnyOf { get; set; }
+
+            /// <summary>
             /// Gets or sets the human-readable description of this parameter schema.
             /// </summary>
             public string Description { get; set; }
@@ -70,6 +80,11 @@ namespace Mcp.Xray.Domain.Models
             /// If empty or null, any value of the specified type is accepted.
             /// </summary>
             public string[] Enum { get; set; }
+
+            /// <summary>
+            /// Gets or sets alternative schemas where exactly one alternative must match.
+            /// </summary>
+            public ParameterSchemaModel[] OneOf { get; set; }
 
             /// <summary>
             /// Gets or sets the set of named properties (parameters) and their schemas.
@@ -82,9 +97,9 @@ namespace Mcp.Xray.Domain.Models
             public string[] Required { get; set; }
 
             /// <summary>
-            /// Gets or sets the JSON schema types (e.g., "string", "integer") allowed for this property.
+            /// Gets or sets the JSON Schema type keyword as either one string or an array of allowed strings.
             /// </summary>
-            public string Type { get; set; }
+            public object Type { get; set; }
         }
 
         /// <summary>
@@ -93,6 +108,11 @@ namespace Mcp.Xray.Domain.Models
         /// </summary>
         public class ScehmaPropertyModel
         {
+            /// <summary>
+            /// Gets or sets the JSON Schema additional-properties rule as a Boolean or nested schema.
+            /// </summary>
+            public object AdditionalProperties { get; set; }
+
             /// <summary>
             /// Gets or sets the default value for this property.
             /// </summary>
@@ -122,6 +142,16 @@ namespace Mcp.Xray.Domain.Models
             public ParameterSchemaModel Items { get; set; }
 
             /// <summary>
+            /// Gets or sets the minimum number of entries accepted by an array property.
+            /// </summary>
+            public object MinItems { get; set; }
+
+            /// <summary>
+            /// Gets or sets the inclusive minimum accepted by a numeric property.
+            /// </summary>
+            public object Minimum { get; set; }
+
+            /// <summary>
             /// Gets or sets the name of the property as it appears in JSON.
             /// </summary>
             [JsonIgnore]
@@ -139,9 +169,14 @@ namespace Mcp.Xray.Domain.Models
             public string[] Required { get; set; }
 
             /// <summary>
-            /// Gets or sets the JSON schema types (e.g., "string", "integer") allowed for this property.
+            /// Gets or sets the JSON Schema type keyword as either one string or an array of allowed strings.
             /// </summary>
-            public string[] Type { get; set; }
+            public object Type { get; set; }
+
+            /// <summary>
+            /// Gets or sets a value indicating whether an array property rejects duplicate entries.
+            /// </summary>
+            public object UniqueItems { get; set; }
         }
 
         /// <summary>

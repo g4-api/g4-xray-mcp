@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<!-- Assembly -->
+		<TargetFramework>net10.0</TargetFramework>
+		<AssemblyVersion>10.0.0.0</AssemblyVersion>
+		<FileVersion>10.0.0.0</FileVersion>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<SatelliteResourceLanguages>en-US</SatelliteResourceLanguages>
+		<LangVersion>latest</LangVersion>
+
+		<!-- Package -->
+		<PackageId>Xpandit.Client</PackageId>
+		<Title>Xpandit.Client</Title>
+		<PackageProjectUrl>https://github.com/g4-api/g4-xray-mcp</PackageProjectUrl>
+		<Authors>G4™ API Community</Authors>
+		<PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+		<PackageLicenseExpression>Apache-2.0+</PackageLicenseExpression>
+		<Description>A standalone Xray Cloud GraphQL client for authentication, test-management commands, manual test steps, and Test Repository folders.</Description>
+		<PackageTags>Xray;Jira;GraphQL;Testing;G4</PackageTags>
+		<Copyright>Copyright 2023 (c) Roei Sabag &amp; HRC Corporation. All rights reserved.</Copyright>
+
+		<!-- https://learn.microsoft.com/en-us/dotnet/fundamentals/syslib-diagnostics/syslib1040-1049 -->
+		<NoWarn>$(NoWarn);SYSLIB1045;IDE0130;CA1873</NoWarn>
+	</PropertyGroup>
+
+</Project>

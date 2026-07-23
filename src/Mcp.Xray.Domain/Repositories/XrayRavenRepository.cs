@@ -69,9 +69,9 @@ namespace Mcp.Xray.Domain.Repositories
         {
             // Resolve the Jira/Xray issue type used for test creation.
             // If no explicit issue type is configured, fall back to the standard Xray "Test" type.
-            var isTestType = !string.IsNullOrEmpty(AppSettings.JiraOptions?.XrayOptions?.TestIssueType);
+            var isTestType = !string.IsNullOrEmpty(AppSettings.JiraOptions?.XrayClientOptions?.TestIssueType);
             var testType = isTestType
-                ? AppSettings.JiraOptions.XrayOptions.TestIssueType
+                ? AppSettings.JiraOptions.XrayClientOptions.TestIssueType
                 : "Test";
 
             // Resolve the configured test priority into the Jira priority ID expected by the API.

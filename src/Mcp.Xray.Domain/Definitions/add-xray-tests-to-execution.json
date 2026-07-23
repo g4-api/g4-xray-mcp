@@ -1,0 +1,95 @@
+{
+	"description": "Associate existing Xray Cloud Tests with an existing Test Execution and wait until every Test Run is registered.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"properties": {
+			"executionKey": {
+				"description": "Jira issue key of the existing Xray Test Execution.",
+				"type": "string"
+			},
+			"testKeys": {
+				"description": "Jira issue keys of the Tests added to the Test Execution.",
+				"items": {
+					"type": "string"
+				},
+				"minItems": 1,
+				"type": "array",
+				"uniqueItems": true
+			}
+		},
+		"required": [
+			"executionKey",
+			"testKeys"
+		],
+		"type": "object"
+	},
+	"name": "add_xray_tests_to_execution",
+	"outputSchema": {
+		"additionalProperties": false,
+		"oneOf": [
+			{
+				"required": [
+					"executionId",
+					"executionKey",
+					"testIds",
+					"testKeys",
+					"testRunIds",
+					"warnings"
+				]
+			},
+			{
+				"required": [
+					"error",
+					"message"
+				]
+			}
+		],
+		"properties": {
+			"error": {
+				"description": "The actionable root failure returned when Test association or registration fails.",
+				"type": "string"
+			},
+			"executionId": {
+				"description": "Numeric Jira issue identifier of the Test Execution.",
+				"type": "string"
+			},
+			"executionKey": {
+				"description": "Resolved Jira issue key of the Test Execution.",
+				"type": "string"
+			},
+			"message": {
+				"description": "A stable summary returned when Test association or registration fails.",
+				"type": "string"
+			},
+			"testIds": {
+				"description": "Numeric Jira issue identifiers of the resolved Tests.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			},
+			"testKeys": {
+				"description": "Resolved Jira issue keys of the Tests.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			},
+			"testRunIds": {
+				"description": "Opaque Xray identifiers of the registered Test Runs in Test-key order.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			},
+			"warnings": {
+				"description": "Non-fatal warnings returned by Xray.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			}
+		},
+		"type": "object"
+	}
+}

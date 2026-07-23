@@ -1,0 +1,146 @@
+{
+	"description": "Update one manual step outcome inside an Xray Test Run. The Test Run is resolved from a Test Execution key and Test key, and stepNumber uses one-based ordering.",
+	"inputSchema": {
+		"additionalProperties": false,
+		"anyOf": [
+			{
+				"required": [
+					"actualResult"
+				]
+			},
+			{
+				"required": [
+					"comment"
+				]
+			},
+			{
+				"required": [
+					"status"
+				]
+			}
+		],
+		"properties": {
+			"actualResult": {
+				"description": "The observed result. An empty string clears the existing value.",
+				"type": "string"
+			},
+			"comment": {
+				"description": "The execution comment. An empty string clears the existing value.",
+				"type": "string"
+			},
+			"executionKey": {
+				"description": "The Jira issue key of the Test Execution that owns the Test Run.",
+				"type": "string"
+			},
+			"iterationRank": {
+				"description": "Optional Xray data-set iteration rank. Omit it for an ordinary manual Test Run.",
+				"type": "string"
+			},
+			"status": {
+				"description": "The Xray Test Run Step status name or identifier.",
+				"type": "string"
+			},
+			"stepNumber": {
+				"description": "The one-based manual step number selected from the Test Run.",
+				"minimum": 1,
+				"type": "integer"
+			},
+			"testKey": {
+				"description": "The Jira issue key of the Test represented by the Test Run.",
+				"type": "string"
+			}
+		},
+		"required": [
+			"executionKey",
+			"stepNumber",
+			"testKey"
+		],
+		"type": "object"
+	},
+	"name": "update_xray_execution_step",
+	"outputSchema": {
+		"additionalProperties": false,
+		"oneOf": [
+			{
+				"required": [
+					"executionId",
+					"executionKey",
+					"stepId",
+					"stepNumber",
+					"testId",
+					"testKey",
+					"testRunId",
+					"warnings"
+				]
+			},
+			{
+				"required": [
+					"error",
+					"message"
+				]
+			}
+		],
+		"properties": {
+			"actualResult": {
+				"description": "The actual result applied to the Test Run Step.",
+				"type": "string"
+			},
+			"comment": {
+				"description": "The comment applied to the Test Run Step.",
+				"type": "string"
+			},
+			"executionId": {
+				"description": "The numeric Jira issue identifier of the Test Execution.",
+				"type": "string"
+			},
+			"executionKey": {
+				"description": "The resolved Jira issue key of the Test Execution.",
+				"type": "string"
+			},
+			"error": {
+				"description": "The actionable root failure returned when the Test Run Step update fails.",
+				"type": "string"
+			},
+			"iterationRank": {
+				"description": "The Xray data-set iteration rank used for the update.",
+				"type": "string"
+			},
+			"message": {
+				"description": "A stable summary returned when the Test Run Step update fails.",
+				"type": "string"
+			},
+			"status": {
+				"description": "The status applied to the Test Run Step.",
+				"type": "string"
+			},
+			"stepId": {
+				"description": "The opaque Xray identifier of the updated Test Run Step.",
+				"type": "string"
+			},
+			"stepNumber": {
+				"description": "The one-based manual step number selected by the caller.",
+				"type": "integer"
+			},
+			"testId": {
+				"description": "The numeric Jira issue identifier of the Test.",
+				"type": "string"
+			},
+			"testKey": {
+				"description": "The resolved Jira issue key of the Test.",
+				"type": "string"
+			},
+			"testRunId": {
+				"description": "The opaque Xray identifier of the Test Run.",
+				"type": "string"
+			},
+			"warnings": {
+				"description": "Non-fatal warnings returned by Xray.",
+				"items": {
+					"type": "string"
+				},
+				"type": "array"
+			}
+		},
+		"type": "object"
+	}
+}
